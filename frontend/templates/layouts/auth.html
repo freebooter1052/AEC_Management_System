@@ -1,20 +1,35 @@
 {% extends "layouts/base.html" %}
 {% block body %}
 <div class="auth">
-  <section class="auth-brand">
-    <a class="brand" href="/login/" style="color:#fff"><span class="brand-mark">AE</span>AEC Admissions</a>
-    <div>
-      <h1>Every overseas application, one shared dossier.</h1>
-      <p class="lede">Students, counsellors and administrators work from the same record — profile, counsellor assignment
-        and, in later sprints, applications and documents.</p>
-      <ul>
-        <li><span class="dot"></span><div><b>Students</b>Build your academic and preference profile and see who is advising you.</div></li>
-        <li><span class="dot"></span><div><b>Counsellors</b>Work your assigned caseload with profile readiness at a glance.</div></li>
-        <li><span class="dot"></span><div><b>Administrators</b>Manage counsellors, assign students and watch workload.</div></li>
+  <section class="auth-brand" aria-label="About AEC Admissions">
+    <div class="orb orb-1" aria-hidden="true"></div>
+    <div class="orb orb-2" aria-hidden="true"></div>
+
+    <a class="brand" href="/login/"><span class="brand-mark">AE</span>AEC Admissions</a>
+
+    <div class="auth-copy">
+      <span class="eyebrow">Overseas education consultants</span>
+      <h1>Study abroad, guided every step of the way.</h1>
+      <p class="lede">From choosing the right country and university to submitting your application,
+        your personal counsellor is with you from the first conversation to the offer letter.</p>
+
+      <ul class="services">
+        <li>
+          <span class="svc-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M4 5h16v11H8l-4 4z"/><path d="M8 9h8M8 12h5"/></svg></span>
+          <div><b>One-to-one counselling</b>Honest advice on courses, countries, budgets and intakes.</div>
+        </li>
+        <li>
+          <span class="svc-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M3 9l9-5 9 5-9 5z"/><path d="M7 11.5V16c0 1.5 2.2 3 5 3s5-1.5 5-3v-4.5"/></svg></span>
+          <div><b>University shortlisting</b>Programmes matched to your grades, goals and budget.</div>
+        </li>
+        <li>
+          <span class="svc-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><rect x="5" y="3" width="14" height="18" rx="2"/><path d="M9 8h6M9 12h6M9 16h3"/></svg></span>
+          <div><b>Application &amp; document support</b>SOPs, transcripts and deadlines, all checked before you submit.</div>
+        </li>
       </ul>
     </div>
-    <p class="small" style="color:#7c8aa3;margin:0">Django REST Framework · Apache CouchDB</p>
   </section>
+
   <main class="auth-main">
     {% block auth %}{% endblock %}
   </main>
