@@ -107,7 +107,6 @@ input[readonly] { background: var(--surface-2); color: var(--muted); }
 .nav a.active { background: rgba(245, 158, 11, .14); color: #fbbf24; }
 .nav svg { width: 18px; height: 18px; flex: 0 0 18px; }
 .nav .soon { margin-left: auto; font-size: .65rem; text-transform: uppercase; letter-spacing: .06em; color: #7c8aa3; }
-.sidebar-foot { margin-top: auto; font-size: .78rem; color: #7c8aa3; padding: 0 .4rem; }
 .topbar { display: flex; align-items: center; justify-content: space-between; gap: 1rem; padding: .9rem 1.8rem; background: var(--surface); border-bottom: 1px solid var(--line); position: sticky; top: 0; z-index: 5; }
 .topbar .who { display: flex; align-items: center; gap: .7rem; }
 .avatar { width: 2.1rem; height: 2.1rem; border-radius: 50%; background: var(--primary-soft); color: var(--primary-strong); display: grid; place-items: center; font-weight: 700; font-size: .85rem; }

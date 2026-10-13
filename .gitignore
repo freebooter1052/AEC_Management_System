@@ -8,3 +8,4 @@ __pycache__/
 # Local CouchDB dataset exports - never commit
 /output/
 /backend/staticfiles/
+# /CLAUDE.md
