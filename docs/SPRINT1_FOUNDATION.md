@@ -13,29 +13,29 @@ Requirement references (§) point to *SRS v1.0*. "PRD" means the AEC Admissions 
 ### Backend and authentication
 | Item | Where | Notes |
 |---|---|---|
-| Django project setup | `backend/aec_project/` | Django 6.1. No SQL database: `DATABASES = {}`. CouchDB is the only data store (§2.5). |
+| Django project setup | `backend/config/` | Django 6.1. No SQL database: `DATABASES = {}`. CouchDB is the only data store (§2.5). |
 | DRF setup | `settings.REST_FRAMEWORK` | JSON only. Authenticated by default. Errors go through one shared handler. |
-| Authentication APIs | `backend/authentication/` | Register, login, logout, me, change password. Admins can list, activate and deactivate users. |
-| User/account document | `authentication/users.py` | Stored as `type: "user"`, separate from the business profile (§6.2). Passwords are hashed with PBKDF2 and never stored as plain text (§5.3). |
-| Tokens | `authentication/tokens.py` | Signed bearer tokens, valid for 8 h. Logout or a password change increments `token_version`, which revokes every older token. |
-| Role-based authorization | `authentication/permissions.py` | `IsStudent`, `IsCounsellor`, `IsAdmin`, `IsStaff`, plus per-record checks. All of it runs on the backend (§5.3). |
+| Authentication APIs | `backend/apps/accounts/` | Register, login, logout, me, change password. Admins can list, activate and deactivate users. |
+| User/account document | `apps/accounts/users.py` | Stored as `type: "user"`, separate from the business profile (§6.2). Passwords are hashed with PBKDF2 and never stored as plain text (§5.3). |
+| Tokens | `apps/accounts/tokens.py` | Signed bearer tokens, valid for 8 h. Logout or a password change increments `token_version`, which revokes every older token. |
+| Role-based authorization | `apps/accounts/permissions.py` | `IsStudent`, `IsCounsellor`, `IsAdmin`, `IsStaff`, plus per-record checks. All of it runs on the backend (§5.3). |
 | Protected endpoints | all `/api/*` except register, login and health | A request with no token or a bad token gets 401. A request from the wrong role gets 403. |
-| Audit trail | `core/audit.py` | `audit_log` documents record login success and failure, registration, password changes, activation changes, counsellor assignment, and create/delete events (§4.1, §5.3). |
-| Error handling | `core/exceptions.py` | A CouchDB outage returns 503 with a friendly message. An edit conflict returns 409. Internal details are never shown to users (§5.2). |
+| Audit trail | `apps/core/audit.py` | `audit_log` documents record login success and failure, registration, password changes, activation changes, counsellor assignment, and create/delete events (§4.1, §5.3). |
+| Error handling | `apps/core/exceptions.py` | A CouchDB outage returns 503 with a friendly message. An edit conflict returns 409. Internal details are never shown to users (§5.2). |
 
 ### CouchDB, students and counsellors
 | Item | Where | Notes |
 |---|---|---|
-| CouchDB database setup | `core/db.py`, `manage.py init_couchdb` | Reuses the existing `core/couchdb_client.py`. Creates 7 Mango indexes. Safe to run again. |
-| Data-access layer | `core/repository.py` | get, save, delete, find, count and paginate over Mango `_find` (§5.1 pagination). |
-| Student document | `students/services.py` | Has `personal`, `academic` and `preferences` sections, as in §6.4. Profile completion (overall and per section) and the list of missing fields are recalculated on every save, which tracks onboarding status (§4.2). |
-| Counsellor document | `counsellors/services.py` | Profile, `max_students` capacity, `is_active`, `assigned_student_ids`, and a calculated workload (§4.3). |
-| Student CRUD APIs | `students/views.py` | A student edits their own profile. A counsellor edits only their assigned students. An admin has full CRUD. |
-| Counsellor CRUD APIs | `counsellors/views.py` | Admins have full CRUD. A counsellor can edit only their own contact fields. Deleting a counsellor is refused while students are still assigned. |
-| Student ↔ counsellor assignment | `students/services.assign_counsellor` | Covers assign, reassign and unassign. Checks that the counsellor exists, is active and has spare capacity. Updates both documents and writes an audit entry. |
+| CouchDB database setup | `apps/core/db.py`, `manage.py init_couchdb` | Reuses the existing `apps/core/couchdb_client.py`. Creates 7 Mango indexes. Safe to run again. |
+| Data-access layer | `apps/core/repository.py` | get, save, delete, find, count and paginate over Mango `_find` (§5.1 pagination). |
+| Student document | `apps/students/services.py` | Has `personal`, `academic` and `preferences` sections, as in §6.4. Profile completion (overall and per section) and the list of missing fields are recalculated on every save, which tracks onboarding status (§4.2). |
+| Counsellor document | `apps/counsellors/services.py` | Profile, `max_students` capacity, `is_active`, `assigned_student_ids`, and a calculated workload (§4.3). |
+| Student CRUD APIs | `apps/students/views.py` | A student edits their own profile. A counsellor edits only their assigned students. An admin has full CRUD. |
+| Counsellor CRUD APIs | `apps/counsellors/views.py` | Admins have full CRUD. A counsellor can edit only their own contact fields. Deleting a counsellor is refused while students are still assigned. |
+| Student ↔ counsellor assignment | `apps/students/services.assign_counsellor` | Covers assign, reassign and unassign. Checks that the counsellor exists, is active and has spare capacity. Updates both documents and writes an audit entry. |
 | University data | `manage.py load_universities` | Loads the local `output/universities.json` (100 universities). Documents that already exist are skipped. |
 
-### Frontend (served by Django, plain HTML/CSS/JS calling the API)
+### Frontend (`frontend/`, served by Django, plain HTML/CSS/JS calling the API)
 | Item | URL | Notes |
 |---|---|---|
 | Login | `/login/` | Student, Counsellor and Administrator tabs. The server checks that the chosen tab matches the account's role. |
@@ -131,7 +131,7 @@ Onboarding status follows profile completion: `registered` (below 40%) → `in_p
 
 ## 5. Verification
 
-- **21 automated API tests pass** (`backend/tests/test_api.py`). They cover registration, login (including failed attempts being logged), choosing the wrong portal, invalid and revoked tokens, password change, profile deep-merge and validation, edit conflicts (409), every role boundary, assign/reassign/capacity, counsellor and student CRUD, dashboards, university search and pagination, and CouchDB being down (503 with no internal details shown).
+- **21 automated API tests pass** (`backend/tests/`, one file per domain). They cover registration, login (including failed attempts being logged), choosing the wrong portal, invalid and revoked tokens, password change, profile deep-merge and validation, edit conflicts (409), every role boundary, assign/reassign/capacity, counsellor and student CRUD, dashboards, university search and pagination, and CouchDB being down (503 with no internal details shown).
 - **Live HTTP run.** The dev server ran against the in-memory database, seeded with the real `universities.json` and the demo accounts. The full acceptance flow worked over HTTP. Every page was screenshotted in headless Chrome as student, counsellor and admin at 1366 px, and at 390 px for mobile.
 - **Not yet run against the real CouchDB server.** The CouchDB service was stopped during the sprint and starting it needs administrator rights. The first step on the dev machine is: start the service, then `init_couchdb` → `create_admin` → `seed_demo`, then walk through the flow in the browser.
 

@@ -1,0 +1,35 @@
+{% extends "layouts/app.html" %}
+{% load static %}
+{% block title %}Students{% endblock %}
+{% block crumb %}Students{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <h1 id="title">Students</h1>
+    <p class="muted" id="subtitle"></p>
+  </div>
+  <div class="toolbar" id="actions"></div>
+</div>
+
+<div class="card">
+  <div class="card-head">
+    <div class="toolbar">
+      <input type="search" id="q" placeholder="Search name or email…" aria-label="Search students">
+      <select id="status" aria-label="Filter by status">
+        <option value="">All statuses</option><option value="registered">Registered</option><option value="in_progress">In progress</option>
+        <option value="profile_complete">Profile complete</option><option value="ready">Ready</option>
+      </select>
+      <select id="counsellor-filter" aria-label="Filter by counsellor" hidden></select>
+    </div>
+    <span class="small muted" id="count"></span>
+  </div>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Student</th><th>Targets</th><th>Readiness</th><th>Status</th><th id="col-counsellor">Counsellor</th><th></th></tr></thead>
+      <tbody id="rows"><tr><td colspan="6" class="loading">Loading…</td></tr></tbody>
+    </table>
+  </div>
+  <div class="pager" id="pager"></div>
+</div>
+{% endblock %}
+{% block scripts %}<script src="{% static 'js/pages/students.js' %}"></script>{% endblock %}

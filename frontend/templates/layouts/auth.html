@@ -1,0 +1,22 @@
+{% extends "layouts/base.html" %}
+{% block body %}
+<div class="auth">
+  <section class="auth-brand">
+    <a class="brand" href="/login/" style="color:#fff"><span class="brand-mark">AE</span>AEC Admissions</a>
+    <div>
+      <h1>Every overseas application, one shared dossier.</h1>
+      <p class="lede">Students, counsellors and administrators work from the same record — profile, counsellor assignment
+        and, in later sprints, applications and documents.</p>
+      <ul>
+        <li><span class="dot"></span><div><b>Students</b>Build your academic and preference profile and see who is advising you.</div></li>
+        <li><span class="dot"></span><div><b>Counsellors</b>Work your assigned caseload with profile readiness at a glance.</div></li>
+        <li><span class="dot"></span><div><b>Administrators</b>Manage counsellors, assign students and watch workload.</div></li>
+      </ul>
+    </div>
+    <p class="small" style="color:#7c8aa3;margin:0">Django REST Framework · Apache CouchDB</p>
+  </section>
+  <main class="auth-main">
+    {% block auth %}{% endblock %}
+  </main>
+</div>
+{% endblock %}
