@@ -1,0 +1,15 @@
+{% extends "frontend/app_base.html" %}
+{% load static %}
+{% block title %}Dashboard{% endblock %}
+{% block crumb %}Dashboard{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <h1 id="greeting">Dashboard</h1>
+    <p class="muted" id="subtitle"></p>
+  </div>
+  <div class="toolbar" id="actions"></div>
+</div>
+<div id="dashboard"><p class="loading">Loading…</p></div>
+{% endblock %}
+{% block scripts %}<script src="{% static 'frontend/js/dashboard.js' %}"></script>{% endblock %}

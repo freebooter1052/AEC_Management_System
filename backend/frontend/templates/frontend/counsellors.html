@@ -1,0 +1,15 @@
+{% extends "frontend/app_base.html" %}
+{% load static %}
+{% block title %}Counsellors{% endblock %}
+{% block crumb %}Counsellors{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <h1 id="title">Counsellors</h1>
+    <p class="muted" id="subtitle"></p>
+  </div>
+  <div class="toolbar" id="actions"></div>
+</div>
+<div id="view"><p class="loading">Loading…</p></div>
+{% endblock %}
+{% block scripts %}<script src="{% static 'frontend/js/counsellors.js' %}"></script>{% endblock %}

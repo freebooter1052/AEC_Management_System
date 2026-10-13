@@ -1,0 +1,109 @@
+{% extends "frontend/app_base.html" %}
+{% load static %}
+{% block title %}Student profile{% endblock %}
+{% block crumb %}<span id="crumb-text">Student profile</span>{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <h1 id="title">Student profile</h1>
+    <p class="muted" id="subtitle">Personal, academic and preference information used for counselling and university matching.</p>
+  </div>
+  <div class="toolbar" id="head-badges"></div>
+</div>
+
+<div id="welcome" class="alert alert-info hidden">Welcome aboard! Complete the three sections below — your readiness score updates as you save.</div>
+
+<div class="layout-2" id="profile-layout" hidden>
+  <div class="card">
+    <div class="section-tabs" role="tablist" aria-label="Profile sections">
+      <button role="tab" data-tab="personal" aria-selected="true">Personal</button>
+      <button role="tab" data-tab="academic" aria-selected="false">Academic</button>
+      <button role="tab" data-tab="preferences" aria-selected="false">Preferences</button>
+    </div>
+
+    <!-- Personal -->
+    <form data-section="personal" novalidate>
+      <div class="grid grid-2">
+        <div class="field"><label>Legal first name</label><input name="personal.first_name" required></div>
+        <div class="field"><label>Legal last name</label><input name="personal.last_name" required></div>
+        <div class="field"><label>Preferred name</label><input name="personal.preferred_name"></div>
+        <div class="field"><label>Email (sign-in)</label><input name="personal.email" readonly></div>
+        <div class="field"><label>Mobile number</label>
+          <div class="input-group"><input name="personal.phone.dial_code" placeholder="+91" aria-label="Dial code"><input name="personal.phone.number" inputmode="numeric" aria-label="Number"></div></div>
+        <div class="field"><label>Date of birth</label><input type="date" name="personal.date_of_birth" data-type="date"></div>
+        <div class="field"><label>Gender</label>
+          <select name="personal.gender"><option value="">Prefer not to say</option><option>Female</option><option>Male</option><option>Non-binary</option><option>Other</option></select></div>
+        <div class="field"><label>Citizenship</label><input name="personal.citizenship"></div>
+        <div class="field span-2"><label>Address</label><input name="personal.address.line1" placeholder="House / street"></div>
+        <div class="field"><label>City</label><input name="personal.address.city"></div>
+        <div class="field"><label>State / region</label><input name="personal.address.state"></div>
+        <div class="field"><label>Country</label><input name="personal.address.country"></div>
+        <div class="field"><label>Postal code</label><input name="personal.address.postal_code"></div>
+      </div>
+      <div class="form-actions"><span class="status"></span><button class="btn btn-primary" type="submit">Save personal details</button></div>
+    </form>
+
+    <!-- Academic -->
+    <form data-section="academic" novalidate hidden>
+      <div class="grid grid-2">
+        <div class="field span-2"><label>Highest degree</label><input name="academic.degree" placeholder="B.E. Computer Science"></div>
+        <div class="field span-2"><label>Institution</label><input name="academic.institution"></div>
+        <div class="field"><label>CGPA / GPA</label><input type="number" step="0.01" min="0" name="academic.cgpa" data-type="number"></div>
+        <div class="field"><label>GPA scale</label>
+          <select name="academic.gpa_scale" data-type="number"><option value="">Select…</option><option value="4">4.0</option><option value="5">5.0</option><option value="10">10</option><option value="100">100 (%)</option></select></div>
+        <div class="field"><label>Graduation year</label><input type="number" min="1950" max="2100" name="academic.graduation_year" data-type="number"></div>
+        <div class="field"><label>Work experience (years)</label><input type="number" step="0.5" min="0" name="academic.work_experience_years" data-type="number"></div>
+      </div>
+      <h3 style="margin-top:.6rem">English proficiency</h3>
+      <div class="grid grid-3">
+        <div class="field"><label>Test</label>
+          <select name="academic.english_test.test_type"><option value="">Not taken yet</option><option>IELTS</option><option>TOEFL</option><option>PTE</option><option>Duolingo</option><option>Cambridge</option><option>Other</option></select></div>
+        <div class="field"><label>Overall score</label><input type="number" step="0.5" min="0" name="academic.english_test.overall" data-type="number"></div>
+        <div class="field"><label>GRE / GMAT status</label><input name="academic.gre_status" placeholder="e.g. GRE 320, waiver requested"></div>
+      </div>
+      <div class="grid grid-4">
+        <div class="field"><label>Listening</label><input type="number" step="0.5" min="0" name="academic.english_test.listening" data-type="number"></div>
+        <div class="field"><label>Reading</label><input type="number" step="0.5" min="0" name="academic.english_test.reading" data-type="number"></div>
+        <div class="field"><label>Writing</label><input type="number" step="0.5" min="0" name="academic.english_test.writing" data-type="number"></div>
+        <div class="field"><label>Speaking</label><input type="number" step="0.5" min="0" name="academic.english_test.speaking" data-type="number"></div>
+      </div>
+      <div class="form-actions"><span class="status"></span><button class="btn btn-primary" type="submit">Save academic record</button></div>
+    </form>
+
+    <!-- Preferences -->
+    <form data-section="preferences" novalidate hidden>
+      <div class="grid grid-2">
+        <div class="field span-2"><label>Target countries</label>
+          <div class="chips" data-name="preferences.countries" data-list="country-options"></div>
+          <span class="hint">Type a country and press Enter.</span></div>
+        <div class="field span-2"><label>Course / programme areas</label>
+          <div class="chips" data-name="preferences.course_areas"></div>
+          <span class="hint">e.g. Computer Science, AI/ML, Data Science.</span></div>
+        <div class="field"><label>Target degree level</label>
+          <select name="preferences.degree_level"><option value="">Select…</option><option>Bachelors</option><option>Masters</option><option>MBA</option><option>PhD</option><option>Diploma</option><option>Certificate</option></select></div>
+        <div class="field"><label>Preferred intake</label><input name="preferences.intake" placeholder="Fall 2027"></div>
+        <div class="field"><label>Budget from (per year)</label><input type="number" min="0" step="500" name="preferences.budget.min" data-type="number"></div>
+        <div class="field"><label>Budget up to (per year)</label><input type="number" min="0" step="500" name="preferences.budget.max" data-type="number"></div>
+        <div class="field"><label>Currency</label>
+          <select name="preferences.budget.currency"><option>USD</option><option>EUR</option><option>GBP</option><option>CAD</option><option>AUD</option><option>INR</option><option>SGD</option></select></div>
+        <div class="field" style="justify-content:flex-end"><label class="checkbox"><input type="checkbox" name="preferences.requires_scholarship" data-type="bool"> Scholarship required</label></div>
+      </div>
+      <datalist id="country-options"></datalist>
+      <div class="form-actions"><span class="status"></span><button class="btn btn-primary" type="submit">Save preferences</button></div>
+    </form>
+  </div>
+
+  <div class="stack">
+    <div class="card" style="text-align:center">
+      <h3>Readiness score</h3>
+      <div class="gauge" id="gauge"><span id="gauge-value">0%</span></div>
+      <div id="section-bars" style="text-align:left"></div>
+    </div>
+    <div class="card"><h3 id="missing-title">Missing for 100%</h3><ul class="missing-list" id="missing"></ul></div>
+    <div class="card counsellor-dock" id="counsellor-card"></div>
+    <details class="json"><summary>CouchDB document (JSON)</summary><pre id="json"></pre></details>
+  </div>
+</div>
+<p class="loading" id="loading">Loading profile…</p>
+{% endblock %}
+{% block scripts %}<script src="{% static 'frontend/js/profile.js' %}"></script>{% endblock %}
