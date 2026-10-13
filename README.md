@@ -184,6 +184,40 @@ erDiagram
 
 ---
 
+## 📂 Project Structure
+
+```
+AEC_Management_System/
+├── backend/                     Django REST API (Python)
+│   ├── manage.py
+│   ├── requirements.txt
+│   ├── config/                  Project configuration: settings, root URL map, WSGI/ASGI
+│   ├── apps/                    One package per business domain
+│   │   ├── core/                Shared infrastructure: CouchDB client & repository, audit log,
+│   │   │                        error handling, roles, health check, management commands
+│   │   ├── accounts/            User documents, login/registration, tokens, role permissions
+│   │   ├── students/            Student profile documents, CRUD, counsellor assignment
+│   │   ├── counsellors/         Counsellor profiles, CRUD, workload
+│   │   ├── universities/        University & course search
+│   │   └── dashboard/           Role-specific dashboard summaries
+│   └── tests/                   API tests (run against an in-memory CouchDB stand-in)
+├── frontend/                    Web client (HTML/CSS/JS), served by Django on the same origin
+│   ├── templates/
+│   │   ├── layouts/             base.html, app.html (signed-in shell), auth.html (login/register)
+│   │   └── pages/               One template per screen
+│   └── static/
+│       ├── css/app.css          Design tokens & components
+│       └── js/                  app.js (API client, session, shell) + pages/<screen>.js
+├── docs/                        Sprint notes and project documentation
+├── .env.example                 Configuration template (copy to .env, never commit .env)
+└── output/                      Local dataset exports (git-ignored, never committed)
+```
+
+Each domain app follows the same layout: `services.py` (document structure and business rules),
+`serializers.py` (input validation), `views.py` (API endpoints) and `urls.py`.
+
+---
+
 ## 🚀 Getting Started
 
 ### Prerequisites
@@ -199,39 +233,35 @@ erDiagram
    cd AEC_Management_System
    ```
 
-2. **Set Up Python Virtual Environment**
+2. **Configure Environment Variables**: copy `.env.example` to `.env` in the repository root and fill in
+   your CouchDB credentials and a `DJANGO_SECRET_KEY`.
+
+3. **Set Up the Backend** (all commands run from `backend/`)
    ```bash
-   python -m venv venv
-   # On Windows (PowerShell):
-   .\venv\Scripts\Activate.ps1
-   # On Linux/macOS:
-   source venv/bin/activate
+   cd backend
+   python -m venv myenv
+   # Windows (PowerShell): .\myenv\Scripts\Activate.ps1      Linux/macOS: source myenv/bin/activate
+   pip install -r requirements.txt
    ```
 
-3. **Install Dependencies**
+4. **Initialise CouchDB and Data** (there are no SQL migrations; CouchDB is the only database)
    ```bash
-   pip install django djangorestframework couchdb python-dotenv requests
+   python manage.py init_couchdb                         # database + Mango indexes (safe to re-run)
+   python manage.py load_universities                    # loads ../output/universities.json
+   python manage.py create_admin --email you@example.com # first administrator (prompts for password)
+   python manage.py seed_demo                            # optional demo counsellors/students
    ```
 
-4. **Configure Environment Variables**
-   Create a `.env` file in the root directory:
-   ```env
-   DJANGO_SECRET_KEY=your-secret-key-here
-   DEBUG=True
-   COUCHDB_URL=http://admin:password@127.0.0.1:5984/
-   COUCHDB_DATABASE=aec_management_db
-   ```
-
-5. **Run Migrations & Initialize CouchDB**
-   ```bash
-   python manage.py migrate
-   ```
-
-6. **Start the Development Server**
+5. **Start the Development Server**
    ```bash
    python manage.py runserver
    ```
    Access the application in your browser at `http://127.0.0.1:8000/`.
+
+6. **Run the Tests** (no CouchDB needed)
+   ```bash
+   python manage.py test tests
+   ```
 
 ---
 

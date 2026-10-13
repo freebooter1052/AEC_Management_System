@@ -14,9 +14,13 @@ Supported .env / Django settings keys:
     COUCHDB_NAME     - Target database name (default: counselling_db)
 """
 
+import logging
 import os
 import pathlib
+
 import couchdb
+
+logger = logging.getLogger("aec.couchdb")
 
 
 def _load_env_file() -> dict:
@@ -114,10 +118,10 @@ def get_couch_db(db_name: str = None) -> couchdb.Database:
     name   = db_name or _get_setting("COUCHDB_NAME", "counselling_db")
 
     if name not in server:
-        print(f"[couchdb_client] Database '{name}' not found - creating it.")
+        logger.info("Database '%s' not found - creating it.", name)
         return server.create(name)
 
-    print(f"[couchdb_client] Connected to database '{name}'.")
+    logger.info("Connected to database '%s'.", name)
     return server[name]
 
 
