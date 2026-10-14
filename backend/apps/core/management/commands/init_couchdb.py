@@ -20,6 +20,8 @@ INDEXES = [
     # Sprint 2: application deadlines and the counselling calendar
     ("idx_type_deadline", ["type", "deadline"]),
     ("idx_type_scheduled", ["type", "scheduled_at"]),
+    # forgot-password codes
+    ("idx_type_user_id", ["type", "user_id"]),
 ]
 DESIGN_DOC = "aec_indexes"
 

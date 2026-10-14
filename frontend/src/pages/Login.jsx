@@ -15,7 +15,8 @@ export default function Login() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [busy, setBusy] = useState(false);
-  const [alert, setAlert] = useState(params.get("expired") ? { kind: "info", text: "Your session has ended. Please sign in again." } : null);
+  const [alert, setAlert] = useState(params.get("expired") ? { kind: "info", text: "Your session has ended. Please sign in again." }
+    : params.get("reset") ? { kind: "success", text: "Your password has been changed. Sign in with the new password." } : null);
 
   if (user) return <Navigate to="/dashboard/" replace />;
 
@@ -48,6 +49,7 @@ export default function Login() {
         <form onSubmit={submit} noValidate>
           <Field label="Email"><input type="email" autoComplete="email" required value={email} onChange={(e) => setEmail(e.target.value)} /></Field>
           <Field label="Password"><input type="password" autoComplete="current-password" required value={password} onChange={(e) => setPassword(e.target.value)} /></Field>
+          <p className="small" style={{ margin: "-.4rem 0 1rem", textAlign: "right" }}><Link to="/forgot-password/">Forgot password?</Link></p>
           <button className="btn btn-primary btn-block" type="submit" disabled={busy}>{busy ? "Signing in…" : "Sign in"}</button>
         </form>
         {portal === "student"

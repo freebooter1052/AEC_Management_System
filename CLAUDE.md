@@ -19,7 +19,7 @@ python manage.py runserver                                    # UI + API on http
 
 python manage.py init_couchdb        # create DB + Mango indexes (idempotent)
 python manage.py load_universities   # load ../output/universities.json; skips existing _ids
-python manage.py create_admin --email x@y.z   # admins can only be created this way
+python manage.py create_admin --email x@y.z   # admins can only be created this way (existing admins reset their password via Forgot password)
 python manage.py backup_couchdb      # dump every doc to output/backups/<db>-<timestamp>.json
 python manage.py purge_demo_data     # report untagged demo docs; add --apply (auto-backup) to delete them
 python manage.py seed_dataset        # write the SRS sample dataset (source="seed"); --reset / --remove
@@ -55,6 +55,7 @@ CouchDB runs as the Windows service "Apache CouchDB" (3.5, `http://127.0.0.1:598
 - Tokens are `django.core.signing` payloads `{uid, v}` sent as `Authorization: Bearer …` and read by `apps/accounts/backends.CouchTokenAuthentication`.
 - `v` must equal `user.token_version`. Logout, password change and deactivation bump the version, which revokes every older token.
 - `request.user` is an `AuthUser` exposing `.id/.role/.profile_id/.doc`.
+- **Forgot password** (`accounts/password_reset.py`, endpoints `forgot-password/`, `verify-reset-code/`, `reset-password/`): a 6-digit code is emailed and kept only as an HMAC in a `password_reset` doc (one per user, 10-minute expiry, 5 attempts, 60-second resend cooldown). The forgot endpoint answers identically for unknown, inactive and valid emails so it never reveals accounts. A reset goes through `users.set_password`, so every existing token is revoked. Mail uses Django 6.1 `MAILERS` (the old `EMAIL_*` settings are deprecated and must not be defined). With no `EMAIL_HOST` in `.env` the code is printed in the `runserver` console; set `EMAIL_HOST/EMAIL_HOST_USER/EMAIL_HOST_PASSWORD` for real email.
 
 **Authorization** is enforced only in the API.
 - Use the role classes in `apps/accounts/permissions.py` (`IsStudent/IsCounsellor/IsAdmin/IsStaff`, `role_required(...)`).

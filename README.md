@@ -249,6 +249,11 @@ After initial setup, simply run from the repository root in **PowerShell as Admi
 2. **Configure Environment Variables**: copy `.env.example` to `.env` in the repository root and fill in
    your CouchDB credentials and a `DJANGO_SECRET_KEY`.
 
+   **Forgot password:** users reset their own password from the sign-in page with a 6-digit code sent by
+   email (valid 10 minutes). With `EMAIL_HOST` left empty the code is printed in the `runserver` console,
+   which is enough for development. To send real email set `EMAIL_HOST`, `EMAIL_HOST_USER` and
+   `EMAIL_HOST_PASSWORD` in `.env` (for Gmail, `smtp.gmail.com` and an App Password); see `.env.example`.
+
 3. **Set Up the Backend** (all commands run from `backend/`)
    ```bash
    cd backend

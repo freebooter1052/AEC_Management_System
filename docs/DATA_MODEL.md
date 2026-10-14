@@ -29,6 +29,7 @@ course.university_id ──▶ university        country.catalogue_name = univer
 | type | Key fields |
 |---|---|
 | `user` | `email` (lowercase, unique), `password_hash` (PBKDF2), `role` (`student`/`counsellor`/`admin`), `full_name`, `profile_id`, `is_active`, `token_version`, `last_login`, `created_at`, `updated_at` |
+| `password_reset` | `user_id`, `email`, `code_hash` (HMAC-SHA256 of the 6-digit code, never the code itself), `attempts`, `created_at`, `expires_at`. One per user; deleted after a successful reset. Not seed or demo data |
 | `student` | `user_id`, `personal{first_name, last_name, preferred_name, email, phone{dial_code, number}, date_of_birth, gender, citizenship, address{line1, city, state, country, postal_code}}`, `academic{degree, institution, cgpa, gpa_scale, graduation_year, work_experience_years, gre_status, english_test{test_type, overall, listening, reading, writing, speaking}}`, `preferences{countries[], course_areas[], degree_level, intake, budget{min, max, currency}, requires_scholarship}`, `counsellor_id`, `counsellor_assigned_at`, `application_ids[]`, `profile_completion{overall, personal, academic, preferences, missing[]}`, `onboarding_status` |
 | `counsellor` | `user_id`, `name`, `email`, `phone`, `specialization`, `region`, `max_students`, `is_active`, `assigned_student_ids[]` |
 
@@ -132,6 +133,7 @@ A counsellor cannot hold two Scheduled sessions that overlap. Notes (summary, re
 |---|---|
 | `type` | per-type lists |
 | `type`+`email` | user lookup |
+| `type`+`user_id` | password-reset code lookup |
 | `type`+`created_at` | sorted lists |
 | `type`+`counsellor_id` | rosters |
 | `type`+`rank`, `type`+`name` | university search |

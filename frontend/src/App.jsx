@@ -6,6 +6,7 @@ import Counselling from "./pages/Counselling";
 import Counsellors from "./pages/Counsellors";
 import Dashboard from "./pages/Dashboard";
 import Documents from "./pages/Documents";
+import ForgotPassword from "./pages/ForgotPassword";
 import Login from "./pages/Login";
 import Profile from "./pages/Profile";
 import Register from "./pages/Register";
@@ -36,6 +37,7 @@ export default function App() {
       <Route path="/" element={<Navigate to="/dashboard/" replace />} />
       <Route path="/login/" element={<Login />} />
       <Route path="/register/" element={<Register />} />
+      <Route path="/forgot-password/" element={<ForgotPassword />} />
       <Route path="/dashboard/" element={auth(<Dashboard />)} />
       <Route path="/profile/" element={auth(<Profile />, ["student"])} />
       <Route path="/students/" element={auth(<Students />, STAFF)} />

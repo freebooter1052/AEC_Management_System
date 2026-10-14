@@ -31,6 +31,7 @@ page_patterns = [
     path("", RedirectView.as_view(url="/dashboard/", permanent=False)),
     path("login/", frontend_app, name="login"),
     path("register/", frontend_app, name="register"),
+    path("forgot-password/", frontend_app, name="forgot-password"),
     path("dashboard/", frontend_app, name="dashboard-page"),
     path("profile/", frontend_app, name="profile"),
     path("students/", frontend_app, name="students"),

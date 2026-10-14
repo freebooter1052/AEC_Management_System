@@ -96,6 +96,30 @@ PASSWORD_HASHERS = [
 AUTH_TOKEN_MAX_AGE = int(os.getenv("AUTH_TOKEN_MAX_AGE", str(8 * 60 * 60)))  # seconds
 AUTH_MIN_PASSWORD_LENGTH = 8
 
+# Forgot-password codes (apps/accounts/password_reset.py)
+PASSWORD_RESET_CODE_TTL = int(os.getenv("PASSWORD_RESET_CODE_TTL", "600"))  # seconds a code stays valid
+PASSWORD_RESET_COOLDOWN = int(os.getenv("PASSWORD_RESET_COOLDOWN", "60"))   # seconds before another code can be sent
+PASSWORD_RESET_MAX_ATTEMPTS = 5
+
+# Outgoing email (Django 6.1 MAILERS). With no EMAIL_HOST the codes are printed in the server
+# console (development); set EMAIL_HOST (+ user/password) in .env to send real email.
+_SMTP_HOST = os.getenv("EMAIL_HOST", "")
+_SMTP_USER = os.getenv("EMAIL_HOST_USER", "")
+MAILERS = {
+    "default": {
+        "BACKEND": "django.core.mail.backends.smtp.EmailBackend" if _SMTP_HOST else "django.core.mail.backends.console.EmailBackend",
+        **({"OPTIONS": {
+            "host": _SMTP_HOST,
+            "port": int(os.getenv("EMAIL_PORT", "587")),
+            "username": _SMTP_USER,
+            "password": os.getenv("EMAIL_HOST_PASSWORD", ""),
+            "use_tls": os.getenv("EMAIL_USE_TLS", "true").lower() == "true",
+            "timeout": 15,
+        }} if _SMTP_HOST else {}),
+    },
+}
+DEFAULT_FROM_EMAIL = os.getenv("DEFAULT_FROM_EMAIL") or _SMTP_USER or "AEC Admissions <no-reply@aec.local>"
+
 REST_FRAMEWORK = {
     "DEFAULT_AUTHENTICATION_CLASSES": ["apps.accounts.backends.CouchTokenAuthentication"],
     "DEFAULT_PERMISSION_CLASSES": ["rest_framework.permissions.IsAuthenticated"],

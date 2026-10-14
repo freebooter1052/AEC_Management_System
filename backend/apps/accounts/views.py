@@ -10,9 +10,12 @@ from apps.core import audit, repository
 from apps.core.roles import ALL_ROLES, STUDENT
 from apps.students import services as student_services
 
-from . import users
+from . import password_reset, users
 from .permissions import IsAdmin
-from .serializers import ChangePasswordSerializer, LoginSerializer, RegisterSerializer, UserAdminUpdateSerializer
+from .serializers import (
+    ChangePasswordSerializer, ForgotPasswordSerializer, LoginSerializer, RegisterSerializer,
+    ResetPasswordSerializer, UserAdminUpdateSerializer, VerifyResetCodeSerializer,
+)
 from .tokens import issue_token
 
 security_logger = logging.getLogger("aec.security")
@@ -127,6 +130,67 @@ class ChangePasswordView(APIView):
         repository.save(user)
         audit.record("auth.password_changed", request=request, actor=request.user, target_id=user["_id"])
         return _auth_response(user)  # old tokens are revoked; hand back a fresh one
+
+
+BAD_CODE = "That code is incorrect, has expired or was tried too many times. Request a new code."
+
+
+class ForgotPasswordView(APIView):
+    """POST /api/auth/forgot-password/ - emails a one-time code. Always answers the same, so it never reveals which emails have accounts."""
+
+    permission_classes = [AllowAny]
+    authentication_classes = []
+
+    def post(self, request):
+        s = ForgotPasswordSerializer(data=request.data)
+        s.is_valid(raise_exception=True)
+        user = users.get_by_email(s.validated_data["email"])
+        if user is not None and user.get("is_active", True):
+            code = password_reset.issue(user)
+            if code:
+                try:
+                    password_reset.send_code(user, code)
+                    audit.record("auth.password_reset_requested", request=request, target_id=user["_id"])
+                except Exception:  # noqa: BLE001 - a mail outage must not change the response
+                    security_logger.exception("Could not send the password reset email to %s", user["email"])
+        return Response({"detail": "If an account exists for that email, a 6-digit code has been sent. It is valid for 10 minutes."})
+
+
+class VerifyResetCodeView(APIView):
+    """POST /api/auth/verify-reset-code/ - checks the code without using it, so the UI can move on to the new-password step."""
+
+    permission_classes = [AllowAny]
+    authentication_classes = []
+
+    def post(self, request):
+        s = VerifyResetCodeSerializer(data=request.data)
+        s.is_valid(raise_exception=True)
+        user = users.get_by_email(s.validated_data["email"])
+        if user is None or not user.get("is_active", True) or password_reset.check(user, s.validated_data["code"]) is None:
+            raise ValidationError({"code": [BAD_CODE]})
+        return Response({"detail": "Code verified."})
+
+
+class ResetPasswordView(APIView):
+    """POST /api/auth/reset-password/ - {email, code, new_password}: sets the password and revokes every signed-in session."""
+
+    permission_classes = [AllowAny]
+    authentication_classes = []
+
+    def post(self, request):
+        s = ResetPasswordSerializer(data=request.data)
+        s.is_valid(raise_exception=True)
+        data = s.validated_data
+        user = users.get_by_email(data["email"])
+        doc = password_reset.check(user, data["code"]) if user is not None and user.get("is_active", True) else None
+        if doc is None:
+            audit.record("auth.password_reset_failed", request=request, target_id=user["_id"] if user else None)
+            raise ValidationError({"code": [BAD_CODE]})
+        users.set_password(user, data["new_password"])  # also bumps token_version
+        repository.save(user)
+        password_reset.consume(doc)
+        audit.record("auth.password_reset", request=request, target_id=user["_id"])
+        return Response({"detail": "Your password has been changed. Sign in with the new password."})
 
 
 class UserListView(APIView):
