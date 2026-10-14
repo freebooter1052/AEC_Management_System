@@ -1,71 +1,39 @@
-# AEC Management System - Start Script
-# This script starts CouchDB, initializes the database, and runs the Django development server
+# AEC Management System - start everything with one command (run from an Administrator PowerShell):
+#   .\run.ps1
+# Starts CouchDB, initialises the database, builds the React frontend and runs the Django server.
 
-# Check if running as Administrator
+$ErrorActionPreference = "Stop"
+$root = $PSScriptRoot
+$python = Join-Path $root "backend\myenv\Scripts\python.exe"
+
+function Step($text) { Write-Host ""; Write-Host "==> $text" -ForegroundColor Yellow }
+function Fail($text) { Write-Host "ERROR: $text" -ForegroundColor Red; exit 1 }
+
 $isAdmin = ([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole] "Administrator")
+if (-not $isAdmin) { Fail "Run PowerShell as Administrator (needed to start the CouchDB service)." }
+if (-not (Test-Path $python)) { Fail "Python venv not found at backend\myenv. See README > Getting Started." }
+if (-not (Get-Command npm -ErrorAction SilentlyContinue)) { Fail "Node.js (npm) not found. Install Node.js 18+ from https://nodejs.org/." }
 
-if (-not $isAdmin) {
-    Write-Host "❌ This script must run as Administrator to start CouchDB service." -ForegroundColor Red
-    Write-Host "Please run PowerShell as Administrator and try again." -ForegroundColor Yellow
-    exit 1
-}
+Step "1/4 Starting Apache CouchDB"
+$couch = Get-Service "Apache CouchDB" -ErrorAction SilentlyContinue
+if (-not $couch) { Fail "The 'Apache CouchDB' Windows service is not installed." }
+if ($couch.Status -ne "Running") { Start-Service "Apache CouchDB"; Start-Sleep -Seconds 3 }
+Write-Host "CouchDB is running." -ForegroundColor Green
 
-Write-Host "🚀 Starting AEC Management System..." -ForegroundColor Cyan
-Write-Host ""
+Step "2/4 Initialising CouchDB and Mango indexes"
+Push-Location (Join-Path $root "backend")
+try { & $python manage.py init_couchdb; if ($LASTEXITCODE -ne 0) { Fail "init_couchdb failed." } } finally { Pop-Location }
 
-# Step 1: Start CouchDB Service
-Write-Host "1️⃣  Starting Apache CouchDB service..." -ForegroundColor Yellow
+Step "3/4 Building the React frontend"
+Push-Location (Join-Path $root "frontend")
 try {
-    $couchService = Get-Service "Apache CouchDB" -ErrorAction SilentlyContinue
-    if ($couchService) {
-        if ($couchService.Status -eq "Running") {
-            Write-Host "✅ CouchDB is already running" -ForegroundColor Green
-        } else {
-            Start-Service "Apache CouchDB"
-            Start-Sleep -Seconds 3
-            Write-Host "✅ CouchDB started successfully" -ForegroundColor Green
-        }
-    } else {
-        Write-Host "⚠️  Apache CouchDB service not found. Make sure it's installed." -ForegroundColor Yellow
-        exit 1
-    }
-} catch {
-    Write-Host "❌ Failed to start CouchDB: $_" -ForegroundColor Red
-    exit 1
-}
+    if (-not (Test-Path "node_modules")) { npm install; if ($LASTEXITCODE -ne 0) { Fail "npm install failed." } }
+    npm run build; if ($LASTEXITCODE -ne 0) { Fail "Frontend build failed." }
+} finally { Pop-Location }
 
-Write-Host ""
-
-# Step 2: Navigate to backend directory
-Write-Host "2️⃣  Navigating to backend directory..." -ForegroundColor Yellow
-cd backend
-if ($LASTEXITCODE -ne 0) {
-    Write-Host "❌ Failed to navigate to backend directory" -ForegroundColor Red
-    exit 1
-}
-Write-Host "✅ In backend directory" -ForegroundColor Green
-
-Write-Host ""
-
-# Step 3: Initialize CouchDB (idempotent)
-Write-Host "3️⃣  Initializing CouchDB and Mango indexes..." -ForegroundColor Yellow
-& myenv\Scripts\python.exe manage.py init_couchdb
-if ($LASTEXITCODE -ne 0) {
-    Write-Host "❌ Failed to initialize CouchDB" -ForegroundColor Red
-    exit 1
-}
-Write-Host "✅ CouchDB initialized" -ForegroundColor Green
-
-Write-Host ""
-
-# Step 4: Run Django development server
-Write-Host "4️⃣  Starting Django development server..." -ForegroundColor Yellow
-Write-Host ""
-Write-Host "🎉 AEC Management System is running!" -ForegroundColor Cyan
-Write-Host "📍 Access the application at: http://127.0.0.1:8000/" -ForegroundColor Cyan
-Write-Host "📊 CouchDB is available at: http://127.0.0.1:5984/" -ForegroundColor Cyan
-Write-Host ""
-Write-Host "Press Ctrl+C to stop the server" -ForegroundColor Yellow
-Write-Host ""
-
-& myenv\Scripts\python.exe manage.py runserver
+Step "4/4 Starting the Django server"
+Write-Host "App:     http://127.0.0.1:8000/" -ForegroundColor Cyan
+Write-Host "CouchDB: http://127.0.0.1:5984/_utils/" -ForegroundColor Cyan
+Write-Host "Press Ctrl+C to stop." -ForegroundColor Yellow
+Push-Location (Join-Path $root "backend")
+try { & $python manage.py runserver } finally { Pop-Location }

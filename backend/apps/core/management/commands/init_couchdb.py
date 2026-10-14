@@ -17,6 +17,9 @@ INDEXES = [
     ("idx_type_university", ["type", "university_id"]),
     ("idx_type_status", ["type", "status"]),
     ("idx_type_recipient", ["type", "recipient_user_id"]),
+    # Sprint 2: application deadlines and the counselling calendar
+    ("idx_type_deadline", ["type", "deadline"]),
+    ("idx_type_scheduled", ["type", "scheduled_at"]),
 ]
 DESIGN_DOC = "aec_indexes"
 

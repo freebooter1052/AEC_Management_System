@@ -26,7 +26,7 @@
     }
 """
 
-from rest_framework.exceptions import ValidationError
+from rest_framework.exceptions import NotFound, PermissionDenied, ValidationError
 
 from apps.core import audit, repository
 from apps.core.roles import ADMIN, COUNSELLOR, STUDENT
@@ -233,6 +233,57 @@ def can_access(user, doc: dict) -> bool:
     if user.role == STUDENT:
         return doc.get("user_id") == user.id
     return False
+
+
+def accessible_student_ids(user) -> list[str] | None:
+    """Students whose workflow records (applications, documents, sessions) the user may see; None = all."""
+    if user.role == ADMIN:
+        return None
+    if user.role == COUNSELLOR:
+        return [s["_id"] for s in repository.find({"type": "student", "counsellor_id": user.profile_id}, fields=["_id"])]
+    return [user.profile_id] if user.role == STUDENT and user.profile_id else []
+
+
+def scope_to_students(user, selector: dict, student_id: str | None = None) -> dict:
+    """
+    Restrict a workflow-record selector to the user's students. An explicit `student_id` filter
+    outside that set is refused (403) rather than silently returning nothing.
+    """
+    allowed = accessible_student_ids(user)
+    if student_id:
+        if allowed is not None and student_id not in allowed:
+            raise PermissionDenied("You do not have access to this student.")
+        selector["student_id"] = student_id
+    elif allowed is not None:
+        selector["student_id"] = {"$in": allowed}
+    return selector
+
+
+WORKFLOW_TYPES = ("application", "document", "counselling_session", "recommendation")
+
+
+def delete_workflow_records(student_id: str) -> int:
+    """Remove a deleted student's applications (with history), documents, sessions and recommendations."""
+    removed = 0
+    for doc_type in WORKFLOW_TYPES:
+        for doc in repository.find({"type": doc_type, "student_id": student_id}):
+            if doc_type == "application":
+                for h in repository.find({"type": "application_history", "application_id": doc["_id"]}):
+                    repository.delete(h)
+                    removed += 1
+            repository.delete(doc)
+            removed += 1
+    return removed
+
+
+def get_accessible(user, student_id: str) -> dict:
+    """The student document, or 404 / 403."""
+    doc = repository.get(student_id, "student") if student_id else None
+    if doc is None:
+        raise NotFound("Student not found.")
+    if not can_access(user, doc):
+        raise PermissionDenied("You do not have access to this student.")
+    return doc
 
 
 # ---------------------------------------------------------------------------

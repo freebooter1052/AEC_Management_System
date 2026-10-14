@@ -83,6 +83,24 @@ class PurgeDemoDataTests(APITestCase):
         self.assertEqual(row["counsellor_name"], "Real Counsellor")
         self.assertEqual(admin.get("/api/dashboard/").data["counsellor_workload"][0]["assigned"], 1)
 
+    def test_workflow_records_of_real_students_are_kept(self):
+        """Since Sprint 2 people create applications, documents and sessions through the app."""
+        user_id = users.get_by_email("stu@aec.test")["_id"]
+        for doc in (
+            {"_id": "application_real", "type": "application", "student_id": self.student_id},
+            {"_id": "application_history_real", "type": "application_history", "application_id": "application_real"},
+            {"_id": "document_real", "type": "document", "student_id": self.student_id},
+            {"_id": "counselling_session_real", "type": "counselling_session", "student_id": self.student_id},
+            {"_id": "notification_real", "type": "notification", "recipient_user_id": user_id},
+            {"_id": "application_history_legacy", "type": "application_history", "application_id": "application_001"},
+        ):
+            self.db.save(doc)
+        self.run_purge("--apply", "--no-backup", "--reassign-orphans-to", self.real["id"])
+        for kept in ("application_real", "application_history_real", "document_real", "counselling_session_real",
+                     "notification_real"):
+            self.assertIsNotNone(self.db.get(kept), kept)
+        self.assertIsNone(self.db.get("application_history_legacy"))  # belongs to a demo application
+
     def test_without_reassign_target_students_are_unassigned(self):
         self.run_purge("--apply", "--no-backup")
         self.assertIsNone(self.db.get(self.student_id)["counsellor_id"])

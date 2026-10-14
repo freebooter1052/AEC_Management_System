@@ -2,19 +2,16 @@
 Root URL map.
 
     /api/...  REST API (one include per domain app)
-    /...      web pages from the top-level `frontend/` folder. Each page is a static
-              shell that loads its data from the API with the user's bearer token;
-              every permission is enforced by the API, not by these routes.
+    /...      the React app built from the top-level `frontend/` folder. Every page URL
+              returns the same index.html and React Router renders the page; data is loaded
+              from the API with the user's bearer token, and every permission is enforced
+              by the API, not by these routes.
 """
 
 from django.urls import include, path
-from django.views.generic import RedirectView, TemplateView
+from django.views.generic import RedirectView
 
-from apps.core.views import HealthView
-
-
-def page(name: str):
-    return TemplateView.as_view(template_name=f"pages/{name}.html")
+from apps.core.views import HealthView, frontend_app
 
 
 api_patterns = [
@@ -24,18 +21,26 @@ api_patterns = [
     path("counsellors/", include("apps.counsellors.urls")),
     path("universities/", include("apps.universities.urls")),
     path("dashboard/", include("apps.dashboard.urls")),
+    path("applications/", include("apps.applications.urls")),
+    path("intakes/", include("apps.applications.intake_urls")),
+    path("documents/", include("apps.documents.urls")),
+    path("counselling/", include("apps.counselling.urls")),
 ]
 
 page_patterns = [
     path("", RedirectView.as_view(url="/dashboard/", permanent=False)),
-    path("login/", page("login"), name="login"),
-    path("register/", page("register"), name="register"),
-    path("dashboard/", page("dashboard"), name="dashboard-page"),
-    path("profile/", page("profile"), name="profile"),
-    path("students/", page("students"), name="students"),
-    path("students/<str:student_id>/", page("profile"), name="student-profile"),
-    path("counsellors/", page("counsellors"), name="counsellors"),
-    path("universities/", page("universities"), name="universities"),
+    path("login/", frontend_app, name="login"),
+    path("register/", frontend_app, name="register"),
+    path("dashboard/", frontend_app, name="dashboard-page"),
+    path("profile/", frontend_app, name="profile"),
+    path("students/", frontend_app, name="students"),
+    path("students/<str:student_id>/", frontend_app, name="student-profile"),
+    path("counsellors/", frontend_app, name="counsellors"),
+    path("universities/", frontend_app, name="universities"),
+    path("applications/", frontend_app, name="applications"),
+    path("applications/<str:application_id>/", frontend_app, name="application-page"),
+    path("documents/", frontend_app, name="documents"),
+    path("counselling/", frontend_app, name="counselling"),
 ]
 
 urlpatterns = [

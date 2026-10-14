@@ -6,6 +6,7 @@ Shared test base: every API test runs against the in-memory CouchDB stand-in
 """
 
 import logging
+from datetime import timedelta
 
 from django.test import SimpleTestCase, override_settings
 from rest_framework.test import APIClient
@@ -62,3 +63,44 @@ class APITestCase(SimpleTestCase):
         res = admin.post("/api/counsellors/", body, format="json")
         self.assertEqual(res.status_code, 201, res.data)
         return res.data
+
+
+class WorkflowTestCase(APITestCase):
+    """
+    A catalogue (one university, two courses), an open and a closed intake, a student assigned to
+    counsellor A, and counsellor B with no students - for the Sprint 2 workflow tests.
+    """
+
+    def setUp(self):
+        super().setUp()
+        day = self.day
+        self.db.save({"_id": "university_001", "type": "university", "name": "Technical University of Munich",
+                      "country": "Germany", "rank": 45})
+        for cid, title in (("course_0001", "Robotics"), ("course_0002", "Data Science")):
+            self.db.save({"_id": cid, "type": "course", "university_id": "university_001", "title": title,
+                          "cluster": "CS & AI"})
+        self.db.save({"_id": "intake_open", "type": "intake", "name": "Fall Open", "season": "Fall", "year": 2099,
+                      "application_deadline": day(60), "decision_by": day(120), "start_date": day(200)})
+        self.db.save({"_id": "intake_closed", "type": "intake", "name": "Spring Closed", "season": "Spring",
+                      "year": 2098, "application_deadline": day(-5), "decision_by": day(30), "start_date": day(90)})
+
+        self.admin = self.as_user("admin@aec.test")
+        self.counsellor_a = self.create_counsellor(self.admin, email="a@aec.test", name="Counsellor A")
+        self.counsellor_b = self.create_counsellor(self.admin, email="b@aec.test", name="Counsellor B")
+        self.register()
+        self.student_id = users.get_by_email("stu@aec.test")["profile_id"]
+        res = self.admin.post(f"/api/students/{self.student_id}/assign-counsellor/",
+                              {"counsellor_id": self.counsellor_a["id"]}, format="json")
+        self.assertEqual(res.status_code, 200, res.data)
+        self.student = self.as_user("stu@aec.test")
+        self.coun_a = self.as_user("a@aec.test")
+        self.coun_b = self.as_user("b@aec.test")
+
+    @staticmethod
+    def day(offset: int) -> str:
+        """ISO date `offset` days from today."""
+        return (repository.today() + timedelta(days=offset)).isoformat()
+
+    def apply(self, client=None, **extra):
+        body = {"course_id": "course_0001", "intake_id": "intake_open", "student_id": self.student_id, **extra}
+        return (client or self.student).post("/api/applications/", body, format="json")

@@ -55,7 +55,7 @@ Notes:
   "student_id": "student_…", "counsellor_id": "counsellor_…",
   "university_id": "university_042", "course_id": "course_0536", "intake_id": "intake_fall_2027",
   "status": "Documents Pending", "deadline": "2027-01-15", "decision_expected": "2027-04-15",
-  "tier": "Target",
+  "tier": "Target", "notes": "",
   "snapshot": {"university_name": "Technical University of Munich (TUM)", "country": "Germany", "world_rank": 45,
                "course_title": "Robotics & Autonomous Systems", "cluster": "CS & AI", "intake_name": "Fall 2027"},
   "history_ids": ["application_history_…"], "submitted_at": null,
@@ -64,6 +64,10 @@ Notes:
 ```
 - **`status`** takes one of: Planned → Shortlisted → Documents Pending → Submitted → Under Review → Offer Received / Rejected, or Completed / Withdrawn.
 - **Status changes** always append an `application_history` doc and add its ID to `history_ids`.
+- **Allowed moves** (`applications/services.TRANSITIONS`): forward along the path, Under Review → Offer Received / Rejected, Offer Received → Completed, two correction steps back (Shortlisted → Planned, Documents Pending → Shortlisted), and Withdrawn from any open state. Rejected, Withdrawn and Completed are final. Students may only withdraw.
+- **Deadline:** defaults to the intake's `application_deadline`; it must not have passed when the application is created and must fall before the intake's `start_date`. `notes` and `tier` are free for the counsellor.
+- **Reaching Documents Pending** creates `Required` SOP and LOR documents for the application. **Submitted** is refused until every document for the application, and every general document of the student, is Verified.
+- Created by the student (for themselves), their counsellor or an admin. Only a Planned application can be deleted; later ones are withdrawn so their history stays.
 
 ### `application_history`
 | Field | Notes |
@@ -79,9 +83,13 @@ Notes:
 | `student_id`, `application_id` | `application_id` is `null` for general documents (transcript, passport, …); set for SOP and LOR |
 | `document_type` | Transcript, Degree Certificate, Passport, SOP, LOR, Resume/CV, Test Score, Other |
 | `status` | Required, Uploaded, Under Review, Verified, Rejected, Expired |
+| `title` | optional label, e.g. `LOR - Prof. Rao` (missing on seed docs = `""`) |
 | `filename`, `uploaded_at` | `null` while the status is Required |
-| `storage_ref` | reserved for the file location or attachment (documents module) |
-| `verified_by`, `verified_at`, `remarks` | reviewer counsellor; `remarks` explains a Rejected or Expired status |
+| `storage_ref` | `{kind: "attachment", name: "file", content_type, size}` when the file is stored as a CouchDB attachment named `file` on this document; `{kind: "url", url}` for a link to an external copy; `null` otherwise (seed docs are metadata only) |
+| `verified_by`, `verified_at`, `remarks` | reviewer: counsellor ID, or the admin's user ID; `remarks` explains a Rejected or Expired status |
+| `history[]` | `{status, at, by (user ID), by_role, remarks}` for every change (missing on seed docs = `[]`) |
+
+Uploads accept PDF, PNG, JPEG, DOC and DOCX up to 5 MB; the content must match the extension. A file can be (re)uploaded while the document is Required, Uploaded, Rejected or Expired. Reviews (counsellor or admin): Uploaded → Under Review / Verified / Rejected, Under Review → Verified / Rejected, Verified → Expired. Rejected and Expired need remarks. The standard checklist (`POST /api/documents/checklist/`) is Transcript, Degree Certificate, Passport, Resume/CV and Test Score.
 
 ### `counselling_session` (SRS 4.7)
 | Field | Notes |
@@ -89,8 +97,11 @@ Notes:
 | `student_id`, `counsellor_id` | |
 | `scheduled_at`, `duration_minutes`, `mode` | `mode` is In person, Video call or Phone |
 | `topic`, `status` | `status` is Scheduled, Completed or Cancelled |
-| `summary`, `recommendations[]` | discussion summary and advice given |
-| `follow_up` | `{action, due_date, status: Pending/Done}`, or `null` |
+| `summary`, `recommendations[]`, `action_items[]` | discussion summary, advice given and agreed actions (`action_items` missing on seed docs = `[]`) |
+| `follow_up` | `{action, due_date, status: Pending/Done, completed_at}`, or `null`. It is a sub-document of the session it came from. |
+| `completed_at`, `cancel_reason`, `created_by` | set by the API (not present on seed docs) |
+
+A counsellor cannot hold two Scheduled sessions that overlap. Notes (summary, recommendations, actions, follow-up) are recorded when the session is completed, which is possible once it has started. A follow-up cannot be due before its session. A student's whole session history is visible to their current counsellor; only the session's own counsellor or an admin can change it. Students may mark their own follow-up done.
 
 ### `recommendation` (SRS 4.8)
 | Field | Notes |
@@ -130,6 +141,8 @@ Notes:
 | `type`+`university_id` | courses and applications by university |
 | `type`+`status` | status filters |
 | `type`+`recipient_user_id` | a user's notifications |
+| `type`+`deadline` | applications sorted by nearest deadline |
+| `type`+`scheduled_at` | counselling history and the calendar |
 
 ## Sample dataset
 
