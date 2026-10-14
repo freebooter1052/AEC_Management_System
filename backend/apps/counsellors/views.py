@@ -32,7 +32,7 @@ def apply_changes(request, doc: dict, serializer_class) -> dict:
     s = serializer_class(data=request.data, partial=True)
     s.is_valid(raise_exception=True)
     changes = s.validated_data
-    if changes.get("max_students") is not None and changes["max_students"] < len(doc.get("assigned_student_ids", [])):
+    if changes.get("max_students") is not None and changes["max_students"] < services.assigned_count(doc["_id"]):
         raise ValidationError({"max_students": ["Capacity cannot be lower than the number of assigned students."]})
     for key, value in changes.items():
         doc[key] = value.strip() if isinstance(value, str) else value
@@ -77,7 +77,7 @@ class CounsellorListCreateView(APIView):
                 {"region": {"$regex": pattern}},
             ]
         return Response(repository.paginate(
-            request, selector, sort=[{"type": "desc"}, {"created_at": "desc"}], serialize=services.serialize,
+            request, selector, sort=[{"type": "desc"}, {"created_at": "desc"}], serialize_page=services.serialize_many,
         ))
 
     def post(self, request):
@@ -113,10 +113,11 @@ class CounsellorOptionsView(APIView):
 
     def get(self, request):
         docs = repository.find({"type": "counsellor", "is_active": True},
-                               fields=["_id", "name", "region", "specialization", "max_students", "assigned_student_ids"])
+                               fields=["_id", "name", "region", "specialization", "max_students"])
+        counts = services.assigned_counts(d["_id"] for d in docs)
         return Response([
             {"id": d["_id"], "name": d.get("name", ""), "region": d.get("region", ""),
-             "specialization": d.get("specialization", ""), "workload": services.workload(d)}
+             "specialization": d.get("specialization", ""), "workload": services.workload(d, counts.get(d["_id"], 0))}
             for d in sorted(docs, key=lambda d: d.get("name", "").lower())
         ])
 
@@ -181,6 +182,6 @@ class CounsellorStudentsView(APIView):
         check_admin_or_self(request, doc)
         selector = {"type": "student", "counsellor_id": counsellor_id, "created_at": {"$gt": None}}
         page = repository.paginate(request, selector, sort=[{"type": "desc"}, {"created_at": "desc"}],
-                                   serialize=student_services.summary)
+                                   serialize_page=student_services.summary_page)
         page["counsellor"] = services.serialize(doc)
         return Response(page)

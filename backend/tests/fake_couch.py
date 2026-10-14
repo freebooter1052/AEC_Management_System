@@ -8,6 +8,7 @@ index() and info().
 import copy
 import re
 import uuid
+from types import SimpleNamespace
 
 from couchdb.http import ResourceConflict
 
@@ -116,6 +117,11 @@ class FakeCouchDB:
         if query.get("fields"):
             docs = [{f: d[f] for f in query["fields"] if f in d} for d in docs]
         return iter(copy.deepcopy(docs))
+
+    def view(self, name, include_docs=False):
+        """Only `_all_docs` is supported."""
+        assert name == "_all_docs", name
+        return [SimpleNamespace(id=k, doc=copy.deepcopy(v) if include_docs else None) for k, v in sorted(self.docs.items())]
 
     def index(self):
         return self.indexes

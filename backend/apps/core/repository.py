@@ -82,12 +82,18 @@ def page_params(request) -> tuple[int, int]:
     return page, page_size
 
 
-def paginate(request, selector: dict, *, sort=None, fields=None, serialize=None) -> dict:
-    """Run a paginated Mango query and return {count, page, page_size, total_pages, results}."""
+def paginate(request, selector: dict, *, sort=None, fields=None, serialize=None, serialize_page=None) -> dict:
+    """
+    Run a paginated Mango query and return {count, page, page_size, total_pages, results}.
+    `serialize` maps one doc; `serialize_page` maps the whole page (for batched lookups).
+    """
     page, page_size = page_params(request)
     total = count(selector)
     docs = find(selector, fields=fields, sort=sort, limit=page_size, skip=(page - 1) * page_size)
-    results = [serialize(d) for d in docs] if serialize else docs
+    if serialize_page:
+        results = serialize_page(docs)
+    else:
+        results = [serialize(d) for d in docs] if serialize else docs
     return {
         "count": total,
         "page": page,

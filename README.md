@@ -220,10 +220,17 @@ Each domain app follows the same layout: `services.py` (document structure and b
 
 ## 🚀 Getting Started
 
+### Quick Start (One Command)
+After initial setup, simply run from the repository root in **PowerShell as Administrator**:
+```powershell
+.\run.ps1
+```
+
 ### Prerequisites
 - **Python 3.10+**
 - **Apache CouchDB 3.x+** running locally or accessible over network (default: `http://127.0.0.1:5984/`)
 - **Git**
+- **PowerShell** (for using `run.ps1` script)
 
 ### Installation Steps
 
@@ -249,14 +256,28 @@ Each domain app follows the same layout: `services.py` (document structure and b
    python manage.py init_couchdb                         # database + Mango indexes (safe to re-run)
    python manage.py load_universities                    # loads ../output/universities.json
    python manage.py create_admin --email you@example.com # first administrator (prompts for password)
-   python manage.py seed_demo                            # optional demo counsellors/students
    ```
 
 5. **Start the Development Server**
+   
+   Use the provided `run.ps1` script to start everything in one command (recommended):
+   ```powershell
+   # Run from the repository root in PowerShell (as Administrator)
+   .\run.ps1
+   ```
+   
+   This script will:
+   - Start the Apache CouchDB service
+   - Initialize the database and Mango indexes
+   - Start the Django development server
+   
+   Access the application in your browser at `http://127.0.0.1:8000/`.
+   
+   **Alternative (manual steps):**
    ```bash
+   # From backend/ directory
    python manage.py runserver
    ```
-   Access the application in your browser at `http://127.0.0.1:8000/`.
 
 6. **Run the Tests** (no CouchDB needed)
    ```bash

@@ -205,6 +205,23 @@ def summary(doc: dict) -> dict:
     }
 
 
+
+def attach_counsellor_names(rows: list[dict]) -> list[dict]:
+    """Add `counsellor_name` to summary rows with a single lookup, so clients never show raw ids."""
+    ids = sorted({r["counsellor_id"] for r in rows if r.get("counsellor_id")})
+    names = {}
+    if ids:
+        names = {c["_id"]: c.get("name", "") for c in
+                 repository.find({"type": "counsellor", "_id": {"$in": ids}}, fields=["_id", "name"])}
+    for r in rows:
+        r["counsellor_name"] = names.get(r.get("counsellor_id")) if r.get("counsellor_id") else None
+    return rows
+
+
+def summary_page(docs: list[dict]) -> list[dict]:
+    """Roster rows for a page of students, with counsellor names resolved."""
+    return attach_counsellor_names([summary(d) for d in docs])
+
 # ---------------------------------------------------------------------------
 # Access rules (SRS 4.1): students -> own profile; counsellors -> assigned; admins -> all
 # ---------------------------------------------------------------------------

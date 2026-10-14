@@ -9,7 +9,6 @@
   const params = new URLSearchParams(location.search);
   const state = { page: 1, q: "", status: "", counsellor: params.get("unassigned") ? "__none__" : (params.get("counsellor_id") || "") };
   let counsellors = [];
-  const counsellorName = (id) => counsellors.find((c) => c.id === id)?.name;
 
   $("#title").textContent = isAdmin ? "Students" : "My students";
   $("#subtitle").textContent = isAdmin
@@ -31,7 +30,7 @@
           <td>${esc(s.countries.join(", ") || "—")}<div class="small muted">${esc([s.degree_level, s.intake].filter(Boolean).join(" · "))}</div></td>
           <td style="min-width:140px">${progressBar(s.profile_completion)}</td>
           <td>${statusBadge(s.onboarding_status)}</td>
-          ${isAdmin ? `<td>${s.counsellor_id ? esc(counsellorName(s.counsellor_id) || s.counsellor_id) : '<span class="badge badge-warn">Unassigned</span>'}</td>` : ""}
+          ${isAdmin ? `<td>${s.counsellor_id ? esc(s.counsellor_name || "Unknown counsellor") : '<span class="badge badge-warn">Unassigned</span>'}</td>` : ""}
           <td style="text-align:right;white-space:nowrap">
             ${isAdmin ? `<button class="btn btn-outline btn-sm" data-assign="${esc(s.id)}" data-name="${esc(s.full_name)}" data-current="${esc(s.counsellor_id || "")}">${s.counsellor_id ? "Reassign" : "Assign"}</button>` : ""}
             <a class="btn btn-outline btn-sm" href="/students/${encodeURIComponent(s.id)}/">Open</a></td>

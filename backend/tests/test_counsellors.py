@@ -103,3 +103,29 @@ class CounsellorAssignmentTests(APITestCase):
         self.assertEqual(data["totals"]["students"], 1)
         self.assertEqual(data["totals"]["unassigned_students"], 1)
         self.assertEqual(data["totals"]["counsellors"], 1)
+
+
+class RosterAccuracyTests(APITestCase):
+    """Dashboards and rosters show real names and counts, whatever state the denormalised fields are in."""
+
+    def setUp(self):
+        super().setUp()
+        self.admin = self.as_user("admin@aec.test")
+        self.counsellor = self.create_counsellor(self.admin)
+        self.register()
+        self.student_id = users.get_by_email("stu@aec.test")["profile_id"]
+        self.admin.post(f"/api/students/{self.student_id}/assign-counsellor/",
+                        {"counsellor_id": self.counsellor["id"]}, format="json")
+
+    def test_roster_shows_counsellor_name_even_when_inactive(self):
+        self.admin.patch(f"/api/counsellors/{self.counsellor['id']}/", {"is_active": False}, format="json")
+        row = self.admin.get("/api/students/").data["results"][0]
+        self.assertEqual(row["counsellor_name"], "Marcus Chen")
+
+    def test_workload_is_counted_from_students(self):
+        doc = self.db.get(self.counsellor["id"])
+        doc["assigned_student_ids"] = []  # stale denormalised copy
+        self.db.save(doc)
+        self.assertEqual(self.admin.get("/api/counsellors/").data["results"][0]["workload"]["assigned"], 1)
+        self.assertEqual(self.admin.get("/api/dashboard/").data["counsellor_workload"][0]["assigned"], 1)
+        self.assertEqual(self.as_user("coun@aec.test").get("/api/dashboard/").data["workload"]["assigned"], 1)

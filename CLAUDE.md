@@ -20,7 +20,9 @@ python manage.py runserver                                    # UI + API on http
 python manage.py init_couchdb        # create DB + Mango indexes (idempotent)
 python manage.py load_universities   # load ../output/universities.json; skips existing _ids
 python manage.py create_admin --email x@y.z   # admins can only be created this way
-python manage.py seed_demo           # demo counsellors/students, password Demo@12345
+python manage.py backup_couchdb      # dump every doc to output/backups/<db>-<timestamp>.json
+python manage.py purge_demo_data     # report untagged demo docs; add --apply (auto-backup) to delete them
+python manage.py seed_dataset        # write the SRS sample dataset (source="seed"); --reset / --remove
 ```
 
 There is no linter, formatter or build step, and **no migrations**: `DATABASES = {}`, and `django.contrib.auth` is not installed.
@@ -64,19 +66,26 @@ CouchDB runs as the Windows service "Apache CouchDB" (3.5, `http://127.0.0.1:598
 
 **Tests.** `backend/tests/` uses `SimpleTestCase` and DRF `APIClient` against `tests/fake_couch.FakeCouchDB`, an in-memory stand-in that supports get/save/delete with revision conflicts and a subset of Mango (`$eq/$ne/$in/$gt*/$lt*/$regex/$exists/$or/$and`, sort, skip, limit, fields). New Mango operators must be added there too. `tests/base.APITestCase` seeds an admin and provides `login/as_user/register/create_counsellor`. Tests use the MD5 hasher for speed.
 
-## The live database is not uniform
+## Live database state
 
-`counselling_db` (about 1,500 documents) was also seeded by other scripts, so many documents **don't match the shapes the code writes**:
-- **Students:** 22 of 26 use `personal_details` / `contact` / `academics` / `preferences.preferred_countries`. The API reads `personal` / `academic` / `preferences.countries`, so these students show blank names and 0% completion.
-- **Users:** 7 use `username` + `linked_profile_id` with no `profile_id`, so `/api/students/me/` returns 404 for them.
-- **Counsellors:** 13 of 18 have no `created_at`, so the list endpoint excludes them. They also use `active_status` instead of `is_active`.
-- **Courses:** about 1,258 documents with `type: "course"`, `title`, `canonical_name`, `cluster` and `university_id`. There is no `name` or `level`, which the university-detail UI renders. One stray `course` document uses `doc_type` instead of `type`.
-- **Applications:** 40 documents. Statuses are snake_case (`draft`, `submitted`, `under_review`, `offer_received`, `waitlisted`), not the SRS Title Case list. History is embedded in `history[]`, and dates live in `deadlines{application, decision}`.
-- **Other types:** `document`, `counselling_session` and `application_history` documents exist, and there is a JS map/reduce view `_design/analytics/applications_by_status`. Mango indexes on `[type, student_id]`, `[type, university_id]` and `[type, course_id]` already exist, plus older `doc_type`-based ones.
+`counselling_db` holds three kinds of data:
+- **Real data entered through the app:** 3 accounts (`admin@aec.local`, counsellor `ridhin@gmail.com`, student `christinjb100@gmail.com`) and their audit entries. Never modify or delete these from scripts.
+- **Catalogue:** 100 `university` docs (from `output/universities.json`) and 1,258 `course` docs (`title`, `canonical_name`, `cluster` with an en dash, `university_id`; no tuition or level yet).
+- **The SRS sample dataset**, written by `seed_dataset` (`apps/core/seeding.py`) and tagged `"source": "seed"`:
+  - Master data: `country` and `intake` docs.
+  - People: 5 counsellors and 18 students. All 23 seeded accounts can log in with password `Seed@2026`.
+  - Workflow: `application` + `application_history`, `document`, `counselling_session`, `recommendation` and `notification` docs.
+  - Removal: `seed_dataset --remove` deletes exactly the seed docs, and `purge_demo_data` never touches them.
 
-Inspect real documents before building on a document type. Either normalise legacy shapes in services or migrate the data deliberately; don't assume the shapes in this file or in the README's examples, which use `doc_type`.
+Document shapes for every type are in `docs/DATA_MODEL.md`, and the allowed status values are in `apps/core/vocab.py`. Use those vocabularies in new APIs.
+
+Never assume a new document type's shape; inspect real docs first.
 
 ## Repo rules
 
+- **Apache CouchDB is the only data store.** Do not add SQLite, Postgres, Redis or any other database. Do not add Django ORM models, migrations, or `django.contrib.auth`, `sessions` or `admin`. `DATABASES` stays `{}`.
+- **Every account is exactly one `user` document in CouchDB.** It holds the PBKDF2 `password_hash`, `role`, `profile_id` and `token_version`, and links to its `student`/`counsellor` profile by `profile_id` ↔ `user_id`. Credentials are never stored anywhere else.
+- **No untagged demo data in `counselling_db`.** Sample data may only be created by `seed_dataset`, which tags every doc `"source": "seed"` and builds people through the same services as the API. Never hand-write demo docs, and never change real (untagged) data from scripts.
+- **Never show raw document IDs in the UI.** The API resolves names (for example `counsellor_name` on student rows via `students/services.attach_counsellor_names`). Counsellor workload is always counted from `student.counsellor_id` (`counsellors/services.assigned_counts`), never from the denormalised `assigned_student_ids`.
 - `output/` holds the local dataset (`universities.json`). It is git-ignored and **must never be committed**. The same goes for `.env`.
 - Don't write role or permission checks only in the frontend. Every rule must be enforced by the API.

@@ -57,15 +57,15 @@ class DashboardView(APIView):
             "role": COUNSELLOR,
             "counsellor_id": doc.get("_id"),
             "name": doc.get("name", user.full_name),
-            "workload": counsellor_services.workload(doc) if doc else None,
+            "workload": counsellor_services.workload(doc, len(students)) if doc else None,
             "students_by_status": by_status,
-            "needs_attention": [student_services.summary(s) for s in needs_attention],
+            "needs_attention": student_services.summary_page(needs_attention),
         }
 
     @staticmethod
     def _admin():
-        counsellors = repository.find({"type": "counsellor"},
-                                      fields=["_id", "name", "is_active", "max_students", "assigned_student_ids"])
+        counsellors = repository.find({"type": "counsellor"}, fields=["_id", "name", "is_active", "max_students"])
+        counts = counsellor_services.assigned_counts()
         return {
             "role": ADMIN,
             "totals": {
@@ -77,7 +77,8 @@ class DashboardView(APIView):
                 "users": repository.count({"type": "user"}),
             },
             "counsellor_workload": sorted(
-                ({"id": c["_id"], "name": c.get("name", ""), **counsellor_services.workload(c)} for c in counsellors),
+                ({"id": c["_id"], "name": c.get("name", ""), "is_active": c.get("is_active", True),
+                  **counsellor_services.workload(c, counts.get(c["_id"], 0))} for c in counsellors),
                 key=lambda c: -c["utilisation_pct"],
             ),
         }
