@@ -22,6 +22,9 @@ class Command(BaseCommand):
     def handle(self, *args, apply, reassign_orphans_to, no_backup, **options):
         plan = maintenance.plan_purge(maintenance.all_docs())
         out = self.stdout
+        stream = getattr(out, "_out", None)
+        if hasattr(stream, "reconfigure"):
+            stream.reconfigure(errors="replace")  # names with non-cp1252 characters must not crash the report
 
         out.write(self.style.MIGRATE_HEADING("KEEP"))
         for t, n in sorted(Counter(d.get("type") for d in plan.keep).items()):
