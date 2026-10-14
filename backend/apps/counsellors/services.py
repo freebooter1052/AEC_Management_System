@@ -10,9 +10,10 @@
       "created_at": "...", "updated_at": "..."
     }
 
-`student.counsellor_id` is the source of truth for an assignment;
-`assigned_student_ids` is a denormalised list kept in step with it so the
-workload view needs no extra query.
+`student.counsellor_id` is the source of truth for an assignment.
+`assigned_student_ids` is a denormalised copy kept in step with it (SRS 6.1),
+but workload numbers are always counted from the students themselves
+(`assigned_counts`) so a stale list can never show wrong figures.
 """
 
 from apps.core import repository
@@ -40,8 +41,25 @@ def build_counsellor(*, user_id: str, name: str, email: str, phone: str = "", sp
     }
 
 
-def workload(doc: dict) -> dict:
-    assigned = len(doc.get("assigned_student_ids", []))
+def assigned_counts(counsellor_ids=None) -> dict[str, int]:
+    """Number of students per counsellor id, counted from `student.counsellor_id`."""
+    selector = {"type": "student", "counsellor_id": {"$gt": None}}
+    if counsellor_ids is not None:
+        selector["counsellor_id"] = {"$in": list(counsellor_ids)}
+    counts: dict[str, int] = {}
+    for s in repository.find(selector, fields=["counsellor_id"]):
+        counts[s["counsellor_id"]] = counts.get(s["counsellor_id"], 0) + 1
+    return counts
+
+
+def assigned_count(counsellor_id: str) -> int:
+    return repository.count({"type": "student", "counsellor_id": counsellor_id})
+
+
+def workload(doc: dict, assigned: int | None = None) -> dict:
+    """Capacity summary. Pass `assigned` (from `assigned_counts`) for list views; otherwise it is counted."""
+    if assigned is None:
+        assigned = assigned_count(doc["_id"]) if doc.get("_id") else 0
     capacity = doc.get("max_students") or DEFAULT_MAX_STUDENTS
     return {
         "assigned": assigned,
@@ -55,10 +73,16 @@ def has_capacity(doc: dict) -> bool:
     return workload(doc)["available"] > 0
 
 
-def serialize(doc: dict) -> dict:
+def serialize(doc: dict, assigned: int | None = None) -> dict:
     data = repository.public(doc)
-    data["workload"] = workload(doc)
+    data["workload"] = workload(doc, assigned)
     return data
+
+
+def serialize_many(docs: list[dict]) -> list[dict]:
+    """Serialize a page of counsellors with one student-count query instead of one per counsellor."""
+    counts = assigned_counts(d["_id"] for d in docs)
+    return [serialize(d, counts.get(d["_id"], 0)) for d in docs]
 
 
 def contact_card(doc: dict | None) -> dict | None:

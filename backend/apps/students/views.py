@@ -78,7 +78,7 @@ class StudentListCreateView(APIView):
                 {"personal.last_name": {"$regex": pattern}},
                 {"personal.email": {"$regex": pattern}},
             ]
-        return Response(repository.paginate(request, selector, sort=STUDENT_SORT, serialize=services.summary))
+        return Response(repository.paginate(request, selector, sort=STUDENT_SORT, serialize_page=services.summary_page))
 
     def post(self, request):
         s = StudentCreateSerializer(data=request.data)

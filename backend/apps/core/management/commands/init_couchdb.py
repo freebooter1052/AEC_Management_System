@@ -11,6 +11,12 @@ INDEXES = [
     ("idx_type_rank", ["type", "rank"]),
     ("idx_type_name", ["type", "name"]),
     ("idx_type_active", ["type", "is_active"]),
+    # SRS workflow documents (applications, documents, sessions, recommendations, notifications)
+    ("idx_type_student", ["type", "student_id"]),
+    ("idx_type_application", ["type", "application_id"]),
+    ("idx_type_university", ["type", "university_id"]),
+    ("idx_type_status", ["type", "status"]),
+    ("idx_type_recipient", ["type", "recipient_user_id"]),
 ]
 DESIGN_DOC = "aec_indexes"
 

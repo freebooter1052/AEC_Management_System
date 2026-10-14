@@ -60,7 +60,6 @@ myenv\Scripts\activate                     # or: python -m venv myenv; pip insta
 python manage.py init_couchdb              # create DB + Mango indexes (safe to re-run)
 python manage.py load_universities         # loads ../output/universities.json; existing docs are skipped
 python manage.py create_admin --email admin@example.com   # prompts for a password
-python manage.py seed_demo                 # optional: 2 counsellors + 3 students, password Demo@12345
 python manage.py runserver
 ```
 Then open http://127.0.0.1:8000/. Configuration lives in the repo-root `.env`. `.env.example` lists every key, including `DJANGO_SECRET_KEY`, which should be set before the project is shared anywhere.
@@ -133,7 +132,7 @@ Onboarding status follows profile completion: `registered` (below 40%) → `in_p
 
 - **21 automated API tests pass** (`backend/tests/`, one file per domain). They cover registration, login (including failed attempts being logged), choosing the wrong portal, invalid and revoked tokens, password change, profile deep-merge and validation, edit conflicts (409), every role boundary, assign/reassign/capacity, counsellor and student CRUD, dashboards, university search and pagination, and CouchDB being down (503 with no internal details shown).
 - **Live HTTP run.** The dev server ran against the in-memory database, seeded with the real `universities.json` and the demo accounts. The full acceptance flow worked over HTTP. Every page was screenshotted in headless Chrome as student, counsellor and admin at 1366 px, and at 390 px for mobile.
-- **Not yet run against the real CouchDB server.** The CouchDB service was stopped during the sprint and starting it needs administrator rights. The first step on the dev machine is: start the service, then `init_couchdb` → `create_admin` → `seed_demo`, then walk through the flow in the browser.
+- **Not yet run against the real CouchDB server.** The CouchDB service was stopped during the sprint and starting it needs administrator rights. The first step on the dev machine is: start the service, then `init_couchdb` → `create_admin`, then walk through the flow in the browser. (The `seed_demo` command was later removed: the live database holds only data entered through the app; see `purge_demo_data`.)
 
 ---
 

@@ -38,7 +38,8 @@
         title: u.name,
         body: `<p class="muted">${esc(u.country)} · World ranking #${esc(u.rank ?? "—")}</p>
           ${u.courses.length
-            ? `<ul>${u.courses.map((c) => `<li>${esc(c.name)}${c.level ? ` <span class="badge">${esc(c.level)}</span>` : ""}</li>`).join("")}</ul>`
+            ? `<p class="small muted">${u.courses.length} course${u.courses.length === 1 ? "" : "s"} offered</p>
+               <ul class="course-list">${u.courses.map((c) => `<li><span>${esc(c.title || c.name || "Untitled course")}</span>${c.cluster || c.level ? `<span class="badge">${esc(c.cluster || c.level)}</span>` : ""}</li>`).join("")}</ul>`
             : `<div class="alert alert-info">Course and intake data for this university has not been added yet. Course management is planned for the next sprint.</div>`}`,
       });
     } catch (err) { toast(err.message, "error"); }

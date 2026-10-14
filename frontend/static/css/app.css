@@ -281,3 +281,7 @@ details.json pre { margin: 0; padding: 0 .9rem .9rem; overflow: auto; max-height
   .topbar { justify-content: space-between; }
   th, td { padding: .6rem .8rem; }
 }
+
+/* ---------- Course list (university drawer) ---------- */
+.course-list { list-style: none; padding: 0; margin: 0; display: grid; gap: .4rem; }
+.course-list li { display: flex; justify-content: space-between; align-items: center; gap: .6rem; padding: .55rem .7rem; border: 1px solid var(--line); border-radius: var(--radius-sm); font-size: .9rem; }
