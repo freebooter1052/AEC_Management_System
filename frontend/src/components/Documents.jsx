@@ -1,11 +1,15 @@
 /* Shared document widgets (rows, upload drawer, review drawer) for the Documents and Application pages. */
 import { useState } from "react";
 import Drawer from "./Drawer";
+import { TabList, tabPanel } from "./Tabs";
+import { useAuth } from "./auth";
 import { useToast } from "./Toast";
-import { DocStatusBadge, Field } from "./ui";
+import { DocStatusBadge, Field, docStatusLabel } from "./ui";
 import { api, download } from "../lib/api";
-import { fieldErrors } from "../lib/form";
+import { fieldErrors, saveErrorMessage } from "../lib/form";
 import { formatDate, formatDateTime } from "../lib/format";
+import { uploadMessage } from "../lib/labels";
+import { useSubmit } from "../lib/useSubmit";
 
 // Mirrors apps/documents/services.py - the API enforces these; the UI only offers valid choices.
 export const UPLOADABLE = ["Required", "Uploaded", "Rejected", "Expired"];
@@ -22,16 +26,18 @@ function FileCell({ d }) {
   if (d.has_file) {
     return (
       <>
-        <button className="btn btn-outline btn-sm" title="Download"
-          onClick={() => download(`/documents/${encodeURIComponent(d.id)}/file/`, d.filename).catch((e) => toast(e.message, "error"))}>⭳ {d.filename}</button>
+        <button type="button" className="btn btn-outline btn-sm file-btn" title={d.filename} aria-label={`Download ${d.filename}`}
+          onClick={() => download(`/documents/${encodeURIComponent(d.id)}/file/`, d.filename).catch((e) => toast(e.message, "error"))}>
+          <span aria-hidden="true">⭳</span><span className="file-name">{d.filename}</span>
+        </button>
         <div className="small muted">Uploaded {formatDate(d.uploaded_at)}</div>
       </>
     );
   }
   if (d.reference_url) {
-    return <><a href={d.reference_url} target="_blank" rel="noopener noreferrer">{d.filename || "Open link"} ↗</a><div className="small muted">Linked {formatDate(d.uploaded_at)}</div></>;
+    return <><a className="file-name-link" href={d.reference_url} target="_blank" rel="noopener noreferrer" title={d.filename || d.reference_url}>{d.filename || "Open link"} <span aria-hidden="true">↗</span><span className="sr-only"> (opens in a new tab)</span></a><div className="small muted">Linked {formatDate(d.uploaded_at)}</div></>;
   }
-  if (d.filename) return <><span>{d.filename}</span><div className="small muted">Recorded {formatDate(d.uploaded_at)} · no stored copy</div></>;
+  if (d.filename) return <><span className="file-name-text" title={d.filename}>{d.filename}</span><div className="small muted">Recorded {formatDate(d.uploaded_at)} · no stored copy</div></>;
   return <span className="small muted">Not uploaded yet</span>;
 }
 
@@ -42,13 +48,14 @@ export function DocRow({ d, user, showStudent = false, actions }) {
   return (
     <div className="doc-row">
       <div><div className="name">{label(d)}</div>{sub && <div className="small muted">{sub}</div>}</div>
-      <div><DocStatusBadge status={d.status} />{reviewed && <div className="small muted">{d.status} by {d.verified_by_name} · {formatDate(d.verified_at)}</div>}</div>
-      <div><FileCell d={d} /></div>
+      <div><DocStatusBadge status={d.status} />{reviewed && <div className="small muted">{docStatusLabel(d.status)} by {d.verified_by_name} · {formatDate(d.verified_at)}</div>}</div>
+      <div className="file-cell"><FileCell d={d} /></div>
       <div className="actions">
         {UPLOADABLE.includes(d.status) && (
-          <button className={`btn ${d.status === "Uploaded" ? "btn-outline" : "btn-primary"} btn-sm`} onClick={() => actions.upload(d)}>{d.status === "Required" ? "Upload" : "Replace"}</button>
+          <button type="button" className={`btn ${d.status === "Uploaded" ? "btn-outline" : "btn-primary"} btn-sm`} onClick={() => actions.upload(d)}
+            aria-label={`${d.status === "Required" ? "Upload" : "Replace"} ${label(d)}`}>{d.status === "Required" ? "Upload" : "Replace"}</button>
         )}
-        {isStaff(user) && REVIEW[d.status] && <button className="btn btn-primary btn-sm" onClick={() => actions.review(d)}>Review</button>}
+        {isStaff(user) && REVIEW[d.status] && <button type="button" className="btn btn-primary btn-sm" onClick={() => actions.review(d)} aria-label={`Review ${label(d)}`}>Review</button>}
       </div>
       {d.remarks && NEEDS_REMARKS.includes(d.status) && <div className="remark"><b>{d.status}:</b> {d.remarks}</div>}
     </div>
@@ -57,26 +64,28 @@ export function DocRow({ d, user, showStudent = false, actions }) {
 
 function UploadDrawer({ doc, onClose, onDone }) {
   const toast = useToast();
+  const { user } = useAuth();
   const [mode, setMode] = useState("file");
   const [file, setFile] = useState(null);
   const [chosen, setChosen] = useState({ text: "No file chosen.", bad: false });
   const [drag, setDrag] = useState(false);
   const [link, setLink] = useState({ reference_url: "", filename: "" });
   const [errors, setErrors] = useState({});
-  const [busy, setBusy] = useState(false);
+  const [busy, run] = useSubmit();
 
   const choose = (f) => {
     const bad = !!f && (!EXTENSIONS.some((e) => f.name.toLowerCase().endsWith(e)) || f.size > MAX_BYTES);
-    setChosen({ text: f ? `${f.name} · ${(f.size / 1024).toFixed(0)} KB${bad ? " — not accepted (type or size)" : ""}` : "No file chosen.", bad });
+    setChosen({ text: f ? `${f.name} · ${(f.size / 1024).toFixed(0)} KB${bad ? " — not accepted: use a PDF, image or Word file up to 5 MB" : ""}` : "No file chosen.", bad });
     setFile(f && !bad ? f : null);
+    setErrors({});
   };
 
-  async function save() {
-    setBusy(true);
+  const save = () => run(async () => {
+    if (mode === "file" && !file) { setErrors({ file: "Choose a PDF, image or Word file up to 5 MB." }); return; }
+    if (mode === "link" && !link.reference_url.trim()) { setErrors({ reference_url: "Enter the link to the file." }); return; }
     try {
       let updated;
       if (mode === "file") {
-        if (!file) { toast("Choose a PDF, image or Word file up to 5 MB.", "error"); return; }
         const data = new FormData();
         data.append("file", file);
         updated = await api(`/documents/${encodeURIComponent(doc.id)}/upload/`, { method: "POST", form: data });
@@ -84,40 +93,37 @@ function UploadDrawer({ doc, onClose, onDone }) {
         updated = await api(`/documents/${encodeURIComponent(doc.id)}/upload/`, {
           method: "POST", body: { reference_url: link.reference_url.trim(), filename: link.filename.trim() } });
       }
-      toast(`${label(doc)} uploaded — your counsellor will review it.`);
+      toast(uploadMessage(doc, updated, user));
       onDone(updated);
     } catch (err) {
       if (err.status === 400) setErrors(fieldErrors(err.data));
-      toast(err.message, "error");
-    } finally { setBusy(false); }
-  }
+      toast(err.status === 409 ? "This document changed meanwhile. Close this panel and try again." : saveErrorMessage(err), "error");
+    }
+  });
 
   return (
-    <Drawer title={`${doc.status === "Required" ? "Upload" : "Replace"} ${label(doc)}`} onClose={onClose} footer={<>
-      <button className="btn btn-outline" onClick={onClose}>Cancel</button>
-      <button className="btn btn-primary" onClick={save} disabled={busy}>Upload</button>
+    <Drawer title={`${doc.status === "Required" ? "Upload" : "Replace"} ${label(doc)}`} onClose={onClose} busy={busy} footer={<>
+      <button type="button" className="btn btn-outline" onClick={onClose}>Cancel</button>
+      <button type="button" className="btn btn-primary" onClick={save} disabled={busy}>{busy ? "Uploading…" : "Upload"}</button>
     </>}>
       {doc.remarks && NEEDS_REMARKS.includes(doc.status) && <div className="alert alert-error"><b>{doc.status}:</b> {doc.remarks}</div>}
       <p className="muted small">{doc.application_label || "General document"} · {doc.student_name}</p>
-      <div className="section-tabs" role="tablist">
-        <button type="button" role="tab" aria-selected={mode === "file"} onClick={() => setMode("file")}>Upload a file</button>
-        <button type="button" role="tab" aria-selected={mode === "link"} onClick={() => setMode("link")}>Link to a file</button>
-      </div>
+      <TabList id="upload-mode" label="How to add the document" tabs={[["file", "Upload a file"], ["link", "Link to a file"]]} selected={mode} onSelect={setMode} />
       <form noValidate onSubmit={(e) => { e.preventDefault(); save(); }}>
-        <div hidden={mode !== "file"}>
+        <div {...tabPanel("upload-mode", "file", mode)}>
           <label className={"dropzone" + (drag ? " drag" : "")}
             onDragOver={(e) => { e.preventDefault(); setDrag(true); }}
             onDragLeave={() => setDrag(false)}
             onDrop={(e) => { e.preventDefault(); setDrag(false); choose(e.dataTransfer.files[0]); }}>
-            <input type="file" accept={EXTENSIONS.join(",")} onChange={(e) => choose(e.target.files[0])} />
+            <input type="file" accept={EXTENSIONS.join(",")} aria-describedby="upload-chosen" onChange={(e) => choose(e.target.files[0])} />
             <b>Choose a file</b> or drop it here<div className="small">PDF, image or Word · up to 5 MB</div>
           </label>
           <div className="field" style={{ marginTop: ".6rem" }}>
-            <span className="hint" style={chosen.bad ? { color: "var(--err)" } : undefined}>{chosen.text}</span>
-            {errors.file && <div className="error">{errors.file}</div>}
+            <span className="hint" id="upload-chosen" style={chosen.bad ? { color: "var(--err)" } : undefined} aria-live="polite">{chosen.text}</span>
+            {errors.file && <div className="error" role="alert">{errors.file}</div>}
           </div>
         </div>
-        <div hidden={mode !== "link"}>
+        <div {...tabPanel("upload-mode", "link", mode)}>
           <Field label="Link (https://…)" error={errors.reference_url}>
             <input type="url" placeholder="https://drive.example.org/…" value={link.reference_url} onChange={(e) => setLink({ ...link, reference_url: e.target.value })} />
           </Field>
@@ -136,37 +142,38 @@ function ReviewDrawer({ doc, onClose, onDone }) {
   const [status, setStatus] = useState(choices[0] || "");
   const [remarks, setRemarks] = useState("");
   const [errors, setErrors] = useState({});
+  const [busy, run] = useSubmit();
   const history = (doc.history || []).slice().reverse();
 
-  async function save() {
+  const save = () => run(async () => {
     if (NEEDS_REMARKS.includes(status) && !remarks.trim()) {
       setErrors({ remarks: `Tell the student why the document is ${status.toLowerCase()}.` });
       return;
     }
     try {
       const updated = await api(`/documents/${encodeURIComponent(doc.id)}/verify/`, { method: "POST", body: { status, remarks: remarks.trim(), rev: doc.rev } });
-      toast(`${label(doc)} marked ${status}.`);
+      toast(`${label(doc)} marked ${docStatusLabel(status).toLowerCase()}.`);
       onDone(updated);
     } catch (err) {
       if (err.status === 400) setErrors(fieldErrors(err.data));
-      toast(err.status === 409 ? "This document changed meanwhile. Reload and try again." : err.message, "error");
+      toast(err.status === 409 ? "This document changed meanwhile. Close this panel, then review the latest version." : saveErrorMessage(err), "error");
     }
-  }
+  });
 
   return (
-    <Drawer title={`Review ${label(doc)}`} onClose={onClose} footer={<>
-      <button className="btn btn-outline" onClick={onClose}>Cancel</button>
-      <button className="btn btn-primary" onClick={save}>Save decision</button>
+    <Drawer title={`Review ${label(doc)}`} onClose={onClose} busy={busy} footer={<>
+      <button type="button" className="btn btn-outline" onClick={onClose}>Cancel</button>
+      <button type="button" className="btn btn-primary" onClick={save} disabled={busy}>{busy ? "Saving…" : "Save decision"}</button>
     </>}>
       <dl className="facts">
         <dt>Student</dt><dd>{doc.student_name}</dd>
         <dt>For</dt><dd>{doc.application_label || "General document"}</dd>
         <dt>Status</dt><dd><DocStatusBadge status={doc.status} /></dd>
-        <dt>File</dt><dd><FileCell d={doc} /></dd>
+        <dt>File</dt><dd className="file-cell"><FileCell d={doc} /></dd>
       </dl>
       <form noValidate style={{ marginTop: "1.2rem" }} onSubmit={(e) => { e.preventDefault(); save(); }}>
         <Field label="Decision" error={errors.status}>
-          <select value={status} onChange={(e) => setStatus(e.target.value)}>{choices.map((c) => <option key={c}>{c}</option>)}</select>
+          <select value={status} onChange={(e) => setStatus(e.target.value)}>{choices.map((c) => <option key={c} value={c}>{docStatusLabel(c)}</option>)}</select>
         </Field>
         <Field label="Remarks for the student" error={errors.remarks}>
           <textarea maxLength={500} placeholder="Required when rejecting or expiring a document." value={remarks} onChange={(e) => setRemarks(e.target.value)} />
@@ -178,7 +185,7 @@ function ReviewDrawer({ doc, onClose, onDone }) {
           {history.map((h, i) => (
             <li key={i}>
               <div className="when">{formatDateTime(h.at)}</div>
-              <div className="what">{h.status}</div>
+              <div className="what">{docStatusLabel(h.status)}</div>
               <div className="note">{h.by_name || ""}{h.remarks ? ` — ${h.remarks}` : ""}</div>
             </li>
           ))}

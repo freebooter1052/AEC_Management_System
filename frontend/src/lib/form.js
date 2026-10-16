@@ -1,5 +1,5 @@
 import { useCallback, useRef, useState } from "react";
-import { flattenErrors } from "./api";
+import { errorEntries, flattenErrors } from "./api";
 
 export const getPath = (obj, path) => path.split(".").reduce((o, k) => (o == null ? undefined : o[k]), obj);
 
@@ -19,6 +19,18 @@ export function fieldErrors(data, prefix = "", out = {}) {
     else out[name] = flattenErrors(val).join(" ");
   }
   return out;
+}
+
+/**
+ * The message to show after a failed save. Validation errors go beside their fields (`showErrors`), so the
+ * message only says so - plus any general reason the API gave. Other failures keep their friendly message.
+ */
+export function saveErrorMessage(err) {
+  if (err?.status !== 400) return err?.message || "The request could not be completed. Please try again.";
+  const entries = errorEntries(err.data);
+  const general = entries.filter(([label]) => !label).map(([, msg]) => msg);
+  const hasFields = entries.some(([label]) => label);
+  return [...general, hasFields ? "Please correct the highlighted fields." : ""].filter(Boolean).join(" ") || err.message;
 }
 
 export function trimStrings(value) {
@@ -49,7 +61,7 @@ export function useForm(initial = {}) {
 
   const showErrors = (data) => {
     setErrors(fieldErrors(data));
-    requestAnimationFrame(() => ref.current?.querySelector(".field .error")?.closest(".field")?.querySelector("input,select,textarea")?.focus());
+    requestAnimationFrame(() => ref.current?.querySelector(".field.has-error")?.querySelector("input,select,textarea")?.focus());
   };
 
   return { values, setValues, set, bind, errors, setErrors, showErrors, clearErrors: () => setErrors({}), ref };

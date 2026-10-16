@@ -10,6 +10,19 @@ from datetime import date
 from rest_framework import serializers
 
 from apps.accounts.serializers import validate_password_strength
+from apps.core import countries
+
+UNKNOWN_COUNTRY = "Choose a country from the list."
+
+
+def world_country(value: str) -> str:
+    """Blank, or the canonical world name ("USA" -> "United States")."""
+    if not value.strip():
+        return ""
+    name = countries.canonical(value)
+    if name is None:
+        raise serializers.ValidationError(UNKNOWN_COUNTRY)
+    return name
 
 OPTIONAL = {"required": False}
 TEXT = {"required": False, "allow_blank": True}
@@ -28,6 +41,9 @@ class AddressSerializer(serializers.Serializer):
     country = serializers.CharField(max_length=80, **TEXT)
     postal_code = serializers.CharField(max_length=20, **TEXT)
 
+    def validate_country(self, value):
+        return world_country(value)
+
 
 class PersonalSerializer(serializers.Serializer):
     first_name = serializers.CharField(max_length=80, required=False)
@@ -38,6 +54,9 @@ class PersonalSerializer(serializers.Serializer):
     gender = serializers.CharField(max_length=30, **TEXT)
     citizenship = serializers.CharField(max_length=60, **TEXT)
     address = AddressSerializer(**OPTIONAL)
+
+    def validate_citizenship(self, value):
+        return world_country(value)
 
     def validate_date_of_birth(self, value):
         if value is None:
@@ -94,6 +113,17 @@ class PreferencesSerializer(serializers.Serializer):
     intake = serializers.CharField(max_length=40, **TEXT)
     budget = BudgetSerializer(**OPTIONAL)
     requires_scholarship = serializers.BooleanField(**OPTIONAL)
+
+    def validate_countries(self, value):
+        """Store the catalogue's spelling ("United States" -> "US") once each, so matching is exact."""
+        out = []
+        for raw in value:
+            name = countries.catalogue_name(raw)
+            if name is None:
+                raise serializers.ValidationError(f"{raw.strip() or 'A blank value'} is not a recognised country. {UNKNOWN_COUNTRY}")
+            if name not in out:
+                out.append(name)
+        return out
 
 
 class StudentProfileSerializer(serializers.Serializer):

@@ -9,6 +9,8 @@ export function AuthProvider({ children }) {
   const value = {
     user,
     signIn(token, u) { session.save(token, u); setUser(u); },
+    /** Swap in the fresh token after a password change (the API revoked the old one). */
+    refreshSession(token, u) { session.save(token, u); setUser(u); },
     updateUser(u) { session.save(session.token, u); setUser(u); },
     async signOut() {
       try { await api("/auth/logout/", { method: "POST" }); } catch (e) { /* token may already be invalid */ }

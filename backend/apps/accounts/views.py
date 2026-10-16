@@ -52,6 +52,7 @@ class RegisterView(APIView):
             degree_level=data.get("intended_level", ""),
         )
         user["profile_id"] = student["_id"]
+        user["privacy_acknowledged_at"] = repository.now_iso()  # only when, never what was shown
 
         repository.save(student)
         try:
@@ -120,12 +121,20 @@ class MeView(APIView):
 
 
 class ChangePasswordView(APIView):
+    """
+    POST /api/auth/change-password/ {current_password, new_password} - the signed-in user's own password only
+    (there is no user id in the request). Every older token is revoked and a fresh one is returned.
+    """
+
     def post(self, request):
         s = ChangePasswordSerializer(data=request.data)
         s.is_valid(raise_exception=True)
         user = repository.get(request.user.id, "user")
         if not users.verify_password(user, s.validated_data["current_password"]):
+            security_logger.warning("Failed password change for user %s (wrong current password)", request.user.id)
             raise ValidationError({"current_password": ["Current password is incorrect."]})
+        if s.validated_data["new_password"] == s.validated_data["current_password"]:
+            raise ValidationError({"new_password": ["Choose a password different from your current one."]})
         users.set_password(user, s.validated_data["new_password"])
         repository.save(user)
         audit.record("auth.password_changed", request=request, actor=request.user, target_id=user["_id"])

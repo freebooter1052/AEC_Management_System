@@ -162,7 +162,8 @@ class CounsellorDetailView(APIView):
         doc = get_counsellor_or_404(counsellor_id)
         assigned = repository.count({"type": "student", "counsellor_id": counsellor_id})
         if assigned:
-            raise ValidationError({"detail": f"Reassign this counsellor's {assigned} student(s) before deleting."})
+            students = "1 student" if assigned == 1 else f"{assigned} students"
+            raise ValidationError({"detail": f"Reassign this counsellor's {students} before deleting the account."})
         user = repository.get(doc.get("user_id"), "user")
         repository.delete(doc)
         if user is not None:

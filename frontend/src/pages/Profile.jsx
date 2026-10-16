@@ -1,14 +1,19 @@
 /* Student profile: the student's own (/profile/) or, for staff, /students/<id>/. */
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link, useParams, useSearchParams } from "react-router-dom";
 import AppShell from "../components/Shell";
 import ChipsInput from "../components/ChipsInput";
+import { CountryChips, CountryPicker } from "../components/CountryPicker";
+import { ConfirmDialog } from "../components/Dialog";
+import { TabList, tabPanel } from "../components/Tabs";
 import { useAuth } from "../components/auth";
 import { useToast } from "../components/Toast";
-import { Field, Loading, ProgressBar, StatusBadge } from "../components/ui";
+import { ErrorAlert, Field, Loading, ProgressBar, StatusBadge, recordError } from "../components/ui";
 import { api } from "../lib/api";
-import { formatDate, initials } from "../lib/format";
-import { getPath, setPath, useForm } from "../lib/form";
+import { formatDate, initials, plural } from "../lib/format";
+import { getPath, saveErrorMessage, setPath, useForm } from "../lib/form";
+import { useSubmit } from "../lib/useSubmit";
+import { useUnsavedChanges } from "../lib/useUnsavedChanges";
 
 // The fields each section's form sends back, with how the value is typed.
 const FIELDS = {
@@ -21,17 +26,20 @@ const FIELDS = {
     ["budget.currency"], ["requires_scholarship", "bool"]],
 };
 const SECTIONS = [["personal", "Personal", "Save personal details"], ["academic", "Academic", "Save academic record"], ["preferences", "Preferences", "Save preferences"]];
+const SECTION_NAME = Object.fromEntries(SECTIONS.map(([k, l]) => [k, l]));
 const LEVELS = ["Bachelors", "Masters", "MBA", "PhD", "Diploma", "Certificate"];
 
-function formValues(doc) {
+function sectionValues(doc, section) {
   let v = {};
-  for (const [section, fields] of Object.entries(FIELDS)) {
-    for (const [f, type] of fields) {
-      const path = `${section}.${f}`;
-      const raw = getPath(doc, path);
-      v = setPath(v, path, type === "list" ? [...(raw || [])] : type === "bool" ? !!raw : raw ?? (f === "budget.currency" ? "USD" : ""));
-    }
+  for (const [f, type] of FIELDS[section]) {
+    const raw = getPath(doc, `${section}.${f}`);
+    v = setPath(v, f, type === "list" ? [...(raw || [])] : type === "bool" ? !!raw : raw ?? (f === "budget.currency" ? "USD" : ""));
   }
+  return v;
+}
+
+function formValues(doc) {
+  const v = Object.fromEntries(SECTIONS.map(([s]) => [s, sectionValues(doc, s)]));
   return setPath(v, "personal.email", doc.personal?.email ?? "");
 }
 
@@ -50,10 +58,14 @@ function sectionPayload(values, section) {
   return out;
 }
 
+const fingerprint = (values, section) => JSON.stringify(sectionPayload(values, section));
+
 function CounsellorPanel({ doc, isAdmin, onChange }) {
   const toast = useToast();
   const [options, setOptions] = useState(null);
   const [choice, setChoice] = useState(doc.counsellor_id || "");
+  const [busy, run] = useSubmit();
+  const [confirmUnassign, setConfirmUnassign] = useState(false);
   const c = doc.counsellor;
 
   useEffect(() => {
@@ -62,26 +74,27 @@ function CounsellorPanel({ doc, isAdmin, onChange }) {
     api("/counsellors/options/").then(setOptions, (err) => toast(err.message, "error"));
   }, [isAdmin, doc.counsellor_id, toast]);
 
-  async function assign(counsellorId) {
+  const assign = (counsellorId) => run(async () => {
     try {
       const updated = await api(`/students/${encodeURIComponent(doc.id)}/assign-counsellor/`, { method: "POST", body: { counsellor_id: counsellorId } });
-      toast(counsellorId ? `Assigned to ${updated.counsellor.name}` : "Counsellor unassigned");
+      toast(counsellorId ? `Assigned to ${updated.counsellor.name}` : "The student no longer has a counsellor");
+      setConfirmUnassign(false);
       onChange(updated);
     } catch (err) { toast(err.message, "error"); }
-  }
+  });
 
   return (
     <div className="card counsellor-dock">
       <h3>Assigned counsellor</h3>
       {c ? (
         <>
-          <div className="row"><div className="avatar">{initials(c.name)}</div>
+          <div className="row"><div className="avatar" aria-hidden="true">{initials(c.name)}</div>
             <div><div style={{ fontWeight: 600 }}>{c.name}</div><div className="small muted">{c.specialization || "Education counsellor"}</div></div>
           </div>
           <dl>
             <dt>Email</dt><dd><a href={`mailto:${c.email}`}>{c.email}</a></dd>
             <dt>Phone</dt><dd>{c.phone || "—"}</dd>
-            <dt>Hub</dt><dd>{c.region || "—"}</dd>
+            <dt>Region</dt><dd>{c.region || "—"}</dd>
             <dt>Since</dt><dd>{formatDate(doc.counsellor_assigned_at)}</dd>
           </dl>
         </>
@@ -93,15 +106,23 @@ function CounsellorPanel({ doc, isAdmin, onChange }) {
               {!options ? <option value="">Loading…</option> : <option value="">Select a counsellor…</option>}
               {(options || []).map((o) => (
                 <option key={o.id} value={o.id} disabled={o.workload.available === 0 && o.id !== doc.counsellor_id}>
-                  {o.name} — {o.workload.assigned}/{o.workload.capacity}{o.region ? ` · ${o.region}` : ""}
+                  {o.name} — {o.workload.assigned}/{o.workload.capacity}{o.region ? ` · ${o.region}` : ""}{o.workload.available === 0 && o.id !== doc.counsellor_id ? " (full)" : ""}
                 </option>
               ))}
             </select>
           </Field>
           <div className="toolbar">
-            <button className="btn btn-primary btn-sm" onClick={() => (choice ? assign(choice) : toast("Choose a counsellor first.", "error"))}>Save assignment</button>
-            {c && <button className="btn btn-danger btn-sm" onClick={() => assign(null)}>Unassign</button>}
+            <button type="button" className="btn btn-primary btn-sm" disabled={busy}
+              onClick={() => (choice ? assign(choice) : toast("Choose a counsellor first.", "warning"))}>{busy ? "Saving…" : "Save assignment"}</button>
+            {c && <button type="button" className="btn btn-danger btn-sm" disabled={busy} onClick={() => setConfirmUnassign(true)}>Unassign</button>}
           </div>
+          {confirmUnassign && (
+            <ConfirmDialog title="Remove the counsellor?" confirmLabel="Unassign" busyLabel="Saving…" danger busy={busy}
+              onConfirm={() => assign(null)} onCancel={() => setConfirmUnassign(false)}>
+              <p>{doc.full_name} will have no counsellor until you assign a new one. {c.name} will no longer see this student, their applications,
+                documents or sessions. Existing records are kept.</p>
+            </ConfirmDialog>
+          )}
         </>
       )}
     </div>
@@ -117,39 +138,78 @@ export default function Profile() {
 
   const [doc, setDoc] = useState(null);
   const [error, setError] = useState(null);
-  const [countries, setCountries] = useState([]);
   const [tab, setTab] = useState("personal");
-  const [saving, setSaving] = useState("");
   const [status, setStatus] = useState({});
+  const [clean, setClean] = useState({}); // section -> fingerprint of what is saved
+  const [leaveError, setLeaveError] = useState("");
+  const [busy, run] = useSubmit();
+  const revRef = useRef(null); // latest revision, so sections saved one after another never conflict with each other
   const form = useForm({});
   const { bind, errors, set, values, setValues } = form;
 
-  useEffect(() => {
-    Promise.all([api(endpoint), api("/universities/countries/").catch(() => [])]).then(([data, list]) => {
+  const load = () => {
+    setError(null);
+    api(endpoint).then((data) => {
       setDoc(data);
-      setValues(formValues(data));
-      setCountries(list);
+      revRef.current = data.rev;
+      const v = formValues(data);
+      setValues(v);
+      setClean(Object.fromEntries(SECTIONS.map(([s]) => [s, fingerprint(v, s)])));
     }, setError);
-  }, [endpoint, setValues]);
+  };
+  useEffect(load, [endpoint]); // reload only when the student changes
 
-  async function save(e, section) {
-    e.preventDefault();
-    setSaving(section);
+  const dirty = doc ? SECTIONS.map(([s]) => s).filter((s) => clean[s] !== undefined && fingerprint(values, s) !== clean[s]) : [];
+  const guard = useUnsavedChanges(dirty.length > 0);
+
+  /** Save one section; only that section is marked saved, other drafts stay as they are. */
+  async function saveSection(section) {
     setStatus((s) => ({ ...s, [section]: "Saving…" }));
-    try {
-      const updated = await api(endpoint, { method: "PATCH", body: { [section]: sectionPayload(values, section), rev: doc.rev } });
-      setDoc(updated);
-      form.clearErrors();
-      setStatus((s) => ({ ...s, [section]: "Saved ✓" }));
-      toast("Profile saved");
-      if (!studentId && section === "personal") updateUser({ ...user, full_name: updated.full_name });
-    } catch (err) {
-      setStatus((s) => ({ ...s, [section]: "" }));
-      if (err.status === 400) { form.showErrors(err.data); toast("Please fix the highlighted fields.", "error"); }
-      else if (err.status === 409) toast("This profile was changed elsewhere. Reload the page to get the latest version.", "error");
-      else toast(err.message, "error");
-    } finally { setSaving(""); }
+    const updated = await api(endpoint, { method: "PATCH", body: { [section]: sectionPayload(values, section), rev: revRef.current } });
+    revRef.current = updated.rev;
+    setDoc(updated);
+    // Show what the server stored (e.g. "USA" becomes "US") without touching the other sections' unsaved edits.
+    const savedSection = sectionValues(updated, section);
+    setValues((prev) => ({ ...prev, [section]: section === "personal" ? { ...savedSection, email: prev.personal?.email } : savedSection }));
+    setClean((c) => ({ ...c, [section]: JSON.stringify(sectionPayload({ [section]: savedSection }, section)) }));
+    setStatus((s) => ({ ...s, [section]: "Saved" }));
+    if (!studentId && section === "personal") updateUser({ ...user, full_name: updated.full_name });
+    return updated;
   }
+
+  function reportFailure(section, err) {
+    setStatus((s) => ({ ...s, [section]: "" }));
+    if (err.status === 400) {
+      form.showErrors(err.data);
+      setTab(section);
+    }
+    const message = err.status === 409
+      ? "This profile was changed elsewhere (another tab or another person). Copy any edits you need, then reload the page to get the latest version."
+      : saveErrorMessage(err);
+    toast(message, "error");
+    return message;
+  }
+
+  const save = (e, section) => {
+    e.preventDefault();
+    return run(async () => {
+      form.clearErrors();
+      try {
+        await saveSection(section);
+        toast(`${SECTION_NAME[section]} details saved`);
+      } catch (err) { reportFailure(section, err); }
+    });
+  };
+
+  const saveAllAndLeave = () => run(async () => {
+    setLeaveError("");
+    form.clearErrors();
+    for (const section of dirty) {
+      try { await saveSection(section); } catch (err) { setLeaveError(reportFailure(section, err)); return; }
+    }
+    toast("Your changes have been saved");
+    guard.leave();
+  });
 
   function goTo(section, field) {
     setTab(section);
@@ -163,6 +223,8 @@ export default function Profile() {
   const q = studentId && doc ? `?student_id=${encodeURIComponent(doc.id)}` : "";
   const appCount = (doc?.application_ids || []).length;
   const err = (name) => errors[name];
+  const tabs = SECTIONS.map(([key, label]) => [key, dirty.includes(key) ? <>{label}<span className="dirty-dot" aria-hidden="true" /><span className="sr-only"> (unsaved changes)</span></> : label]);
+  const statusText = (section) => (dirty.includes(section) && status[section] !== "Saving…" ? "Unsaved changes" : status[section]);
 
   return (
     <AppShell title={studentId ? "Student profile" : "My profile"} crumb={crumb}>
@@ -175,32 +237,33 @@ export default function Profile() {
       </div>
 
       {!studentId && params.get("welcome") && doc && (
-        <div className="alert alert-info">Welcome aboard! Complete the three sections below — your readiness score updates as you save.</div>
+        <div className="alert alert-info">Welcome aboard! Complete the three sections below. Each section has its own Save button, and your readiness score updates as you save.</div>
       )}
 
-      {error && <div className="alert alert-error">{error.status === 403 ? "You do not have access to this student." : error.message}</div>}
+      {error && <ErrorAlert error={error} onRetry={error.status === 403 || error.status === 404 ? undefined : load}>{recordError(error, "student")}</ErrorAlert>}
       {!doc && !error && <Loading text="Loading profile…" />}
 
       {doc && (
         <div className="layout-2">
           <div className="card" ref={form.ref}>
-            <div className="section-tabs" role="tablist" aria-label="Profile sections">
-              {SECTIONS.map(([key, label]) => <button key={key} role="tab" aria-selected={tab === key} onClick={() => setTab(key)}>{label}</button>)}
-            </div>
+            <TabList id="profile" label="Profile sections" tabs={tabs} selected={tab} onSelect={setTab} />
+            {dirty.length > 0 && (
+              <p className="small unsaved-note" role="status">Unsaved changes in {dirty.map((s) => SECTION_NAME[s]).join(" and ")}. Each section is saved with its own button.</p>
+            )}
 
             {SECTIONS.map(([section, , saveLabel]) => (
-              <form key={section} noValidate hidden={tab !== section} onSubmit={(e) => save(e, section)}>
+              <form key={section} noValidate {...tabPanel("profile", section, tab)} tabIndex={-1} onSubmit={(e) => save(e, section)}>
                 {section === "personal" && (
                   <div className="grid grid-2">
                     <Field label="Legal first name" error={err("personal.first_name")}><input required {...bind("personal.first_name")} /></Field>
                     <Field label="Legal last name" error={err("personal.last_name")}><input required {...bind("personal.last_name")} /></Field>
                     <Field label="Preferred name" error={err("personal.preferred_name")}><input {...bind("personal.preferred_name")} /></Field>
                     <Field label="Email (sign-in)"><input readOnly {...bind("personal.email")} /></Field>
-                    <div className="field">
+                    <div className={`field${err("personal.phone.dial_code") || err("personal.phone.number") ? " has-error" : ""}`}>
                       <label htmlFor="phone-number">Mobile number</label>
                       <div className="input-group">
                         <input placeholder="+91" aria-label="Dial code" {...bind("personal.phone.dial_code")} />
-                        <input id="phone-number" inputMode="numeric" aria-label="Number" {...bind("personal.phone.number")} />
+                        <input id="phone-number" inputMode="numeric" {...bind("personal.phone.number")} />
                       </div>
                       {(err("personal.phone.dial_code") || err("personal.phone.number")) && <div className="error">{err("personal.phone.dial_code") || err("personal.phone.number")}</div>}
                     </div>
@@ -208,11 +271,15 @@ export default function Profile() {
                     <Field label="Gender" error={err("personal.gender")}>
                       <select {...bind("personal.gender")}><option value="">Prefer not to say</option><option>Female</option><option>Male</option><option>Non-binary</option><option>Other</option></select>
                     </Field>
-                    <Field label="Citizenship" error={err("personal.citizenship")}><input {...bind("personal.citizenship")} /></Field>
+                    <Field label="Citizenship" error={err("personal.citizenship")}>
+                      <CountryPicker ariaLabel="Citizenship" name="personal.citizenship" value={getPath(values, "personal.citizenship")} onChange={(v) => set("personal.citizenship", v)} />
+                    </Field>
                     <Field label="Address" className="span-2" error={err("personal.address.line1")}><input placeholder="House / street" {...bind("personal.address.line1")} /></Field>
                     <Field label="City" error={err("personal.address.city")}><input {...bind("personal.address.city")} /></Field>
                     <Field label="State / region" error={err("personal.address.state")}><input {...bind("personal.address.state")} /></Field>
-                    <Field label="Country" error={err("personal.address.country")}><input {...bind("personal.address.country")} /></Field>
+                    <Field label="Country" error={err("personal.address.country")}>
+                      <CountryPicker ariaLabel="Country of residence" name="personal.address.country" value={getPath(values, "personal.address.country")} onChange={(v) => set("personal.address.country", v)} />
+                    </Field>
                     <Field label="Postal code" error={err("personal.address.postal_code")}><input {...bind("personal.address.postal_code")} /></Field>
                   </div>
                 )}
@@ -249,10 +316,10 @@ export default function Profile() {
 
                 {section === "preferences" && (
                   <div className="grid grid-2">
-                    <Field label="Target countries" className="span-2" hint="Type a country and press Enter." error={err("preferences.countries")}>
-                      <ChipsInput name="preferences.countries" label="Target countries" list="country-options" values={getPath(values, "preferences.countries")} onChange={(v) => set("preferences.countries", v)} />
+                    <Field label="Target countries" className="span-2" hint="Search and pick from the list. Up to 10 countries." error={err("preferences.countries")}>
+                      <CountryChips ariaLabel="Target countries" name="preferences.countries" values={getPath(values, "preferences.countries")} onChange={(v) => set("preferences.countries", v)} />
                     </Field>
-                    <Field label="Course / programme areas" className="span-2" hint="e.g. Computer Science, AI/ML, Data Science." error={err("preferences.course_areas")}>
+                    <Field label="Course / programme areas" className="span-2" hint="Type an area and press Enter, e.g. Computer Science, AI/ML, Data Science." error={err("preferences.course_areas")}>
                       <ChipsInput name="preferences.course_areas" label="Course / programme areas" values={getPath(values, "preferences.course_areas")} onChange={(v) => set("preferences.course_areas", v)} />
                     </Field>
                     <Field label="Target degree level" error={err("preferences.degree_level")}>
@@ -267,13 +334,12 @@ export default function Profile() {
                     <div className="field" style={{ justifyContent: "flex-end" }}>
                       <label className="checkbox"><input type="checkbox" {...bind("preferences.requires_scholarship", "bool")} /> Scholarship required</label>
                     </div>
-                    <datalist id="country-options">{countries.map((c) => <option key={c.country} value={c.country} />)}</datalist>
                   </div>
                 )}
 
                 <div className="form-actions">
-                  <span className="status">{status[section]}</span>
-                  <button className="btn btn-primary" type="submit" disabled={saving === section}>{saveLabel}</button>
+                  <span className={`status${dirty.includes(section) ? " is-dirty" : ""}`} aria-live="polite">{statusText(section)}</span>
+                  <button className="btn btn-primary" type="submit" disabled={busy}>{busy && status[section] === "Saving…" ? "Saving…" : saveLabel}</button>
                 </div>
               </form>
             ))}
@@ -282,12 +348,12 @@ export default function Profile() {
           <div className="stack">
             <div className="card" style={{ textAlign: "center" }}>
               <h3>Readiness score</h3>
-              <div className="gauge" style={{ "--pct": comp.overall || 0 }}><span>{comp.overall || 0}%</span></div>
+              <div className="gauge" style={{ "--pct": comp.overall || 0 }} role="img" aria-label={`Profile ${comp.overall || 0}% complete`}><span aria-hidden="true">{comp.overall || 0}%</span></div>
               <div style={{ textAlign: "left" }}>
-                {["personal", "academic", "preferences"].map((s) => (
+                {SECTIONS.map(([s, label]) => (
                   <div key={s} style={{ marginTop: ".6rem" }}>
-                    <div className="small" style={{ fontWeight: 600, textTransform: "capitalize" }}>{s}</div>
-                    <ProgressBar pct={comp[s]} />
+                    <div className="small" style={{ fontWeight: 600 }}>{label}</div>
+                    <ProgressBar pct={comp[s]} name={`${label} section complete`} />
                   </div>
                 ))}
               </div>
@@ -296,14 +362,14 @@ export default function Profile() {
               <h3>{missing.length ? `Missing for 100% (${missing.length})` : "All required fields complete"}</h3>
               <ul className="missing-list">
                 {missing.length
-                  ? missing.map((m) => <li key={m.field}><a href="#" onClick={(e) => { e.preventDefault(); goTo(m.section, m.field); }}>{m.label}</a></li>)
+                  ? missing.map((m) => <li key={m.field}><button type="button" className="link-btn" onClick={() => goTo(m.section, m.field)}>{m.label}</button></li>)
                   : <li className="done muted">Nothing left to add.</li>}
               </ul>
             </div>
-            <CounsellorPanel doc={doc} isAdmin={user.role === "admin"} onChange={setDoc} />
+            <CounsellorPanel doc={doc} isAdmin={user.role === "admin"} onChange={(updated) => { setDoc(updated); revRef.current = updated.rev; }} />
             <div className="card"><h3>Applications &amp; counselling</h3>
               <div className="workflow-links">
-                {[[`/applications/${q}`, "Applications", `${appCount} application${appCount === 1 ? "" : "s"}`],
+                {[[`/applications/${q}`, "Applications", appCount ? plural(appCount, "application") : "No applications yet"],
                   [`/documents/${q}`, "Documents", "Checklist & verification"],
                   [`/counselling/${q}`, "Counselling", "Sessions & follow-ups"]].map(([href, label, sub]) => (
                   <Link key={label} to={href}>
@@ -315,6 +381,14 @@ export default function Profile() {
             </div>
           </div>
         </div>
+      )}
+
+      {guard.pending && (
+        <ConfirmDialog title="Save your changes before leaving?" confirmLabel="Save and leave" busyLabel="Saving…" cancelLabel="Stay on this page"
+          busy={busy} error={leaveError} onConfirm={saveAllAndLeave} onCancel={() => { setLeaveError(""); guard.stay(); }}
+          extraAction={{ label: "Leave without saving", onClick: () => { setLeaveError(""); guard.leave(); } }}>
+          <p>You have unsaved changes in {dirty.map((s) => SECTION_NAME[s]).join(" and ")}. If you leave now, they will be lost.</p>
+        </ConfirmDialog>
       )}
     </AppShell>
   );

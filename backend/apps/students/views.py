@@ -71,13 +71,14 @@ class StudentListCreateView(APIView):
 
         if params.get("status"):
             selector["onboarding_status"] = params["status"]
-        if params.get("q", "").strip():
-            pattern = repository.contains_pattern(params["q"])
-            selector["$or"] = [
-                {"personal.first_name": {"$regex": pattern}},
-                {"personal.last_name": {"$regex": pattern}},
-                {"personal.email": {"$regex": pattern}},
-            ]
+        # Every word must match the first name, last name or email, so "asha nair" finds Asha Nair.
+        words = params.get("q", "").split()[:5]
+        if words:
+            selector["$and"] = [{"$or": [
+                {"personal.first_name": {"$regex": repository.contains_pattern(w)}},
+                {"personal.last_name": {"$regex": repository.contains_pattern(w)}},
+                {"personal.email": {"$regex": repository.contains_pattern(w)}},
+            ]} for w in words]
         return Response(repository.paginate(request, selector, sort=STUDENT_SORT, serialize_page=services.summary_page))
 
     def post(self, request):

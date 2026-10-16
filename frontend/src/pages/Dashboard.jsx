@@ -2,7 +2,8 @@ import { Link } from "react-router-dom";
 import AppShell from "../components/Shell";
 import { AppStatusBadge, DeadlineBadge, ErrorAlert, Kpi, Loading, ProgressBar, StatusBadge } from "../components/ui";
 import { api } from "../lib/api";
-import { formatDate, formatDateTime, initials } from "../lib/format";
+import { formatDate, formatDateTime, initials, plural } from "../lib/format";
+import { studentNextStep } from "../lib/nextStep";
 import { useLoad } from "../lib/useLoad";
 
 const Overdue = ({ n }) => <b style={{ color: "var(--err)" }}>{n} overdue</b>;
@@ -72,7 +73,7 @@ function PipelineCard({ apps }) {
   const rows = Object.entries(apps.by_status || {}).filter(([, n]) => n);
   return (
     <div className="card">
-      <div className="card-head"><h3>Application pipeline</h3><Link className="small" to="/applications/">Workspace →</Link></div>
+      <div className="card-head"><h3>Application pipeline</h3><Link className="small" to="/applications/">Applications →</Link></div>
       {rows.length ? (
         <ul className="list-plain">{rows.map(([s, n]) => <li key={s}><AppStatusBadge status={s} /><b>{n}</b></li>)}</ul>
       ) : <Empty>No applications yet.</Empty>}
@@ -96,16 +97,16 @@ function CounsellorCard({ c }) {
       <dl>
         <dt>Email</dt><dd><a href={`mailto:${c.email}`}>{c.email}</a></dd>
         <dt>Phone</dt><dd>{c.phone || "—"}</dd>
-        <dt>Hub</dt><dd>{c.region || "—"}</dd>
+        <dt>Region</dt><dd>{c.region || "—"}</dd>
       </dl>
     </div>
   );
 }
 
-function Head({ title, subtitle, children }) {
+function Head({ eyebrow, title, subtitle, children }) {
   return (
     <div className="page-head">
-      <div><h1>{title}</h1><p className="muted">{subtitle}</p></div>
+      <div>{eyebrow && <p className="page-eyebrow">{eyebrow}</p>}<h1>{title}</h1>{subtitle && <p className="muted">{subtitle}</p>}</div>
       <div className="toolbar">{children}</div>
     </div>
   );
@@ -116,16 +117,17 @@ function StudentDashboard({ d }) {
   const prefs = d.preferences || {};
   const missing = (comp.missing || []).slice(0, 8);
   const dd = { margin: 0 };
+  const next = studentNextStep(d);
   return (
     <>
-      <Head title={`Your journey abroad starts here, ${d.full_name.split(" ")[0] || "there"}`} subtitle="Build your profile, shortlist universities, and track every application and document in one place, with a counsellor guiding each step.">
-        <Link className="btn btn-primary" to="/profile/">Update profile</Link>
+      <Head eyebrow={`Hello, ${d.full_name.split(" ")[0] || "there"}`} title={next.title} subtitle={next.text}>
+        <Link className="btn btn-primary" to={next.to}>{next.action}</Link>
       </Head>
       <div className="kpis">
-        <Kpi label="Profile readiness" value={`${comp.overall ?? 0}%`}><StatusBadge status={d.onboarding_status} /></Kpi>
+        <Kpi label="Profile readiness" value={`${comp.overall ?? 0}%`} to="/profile/"><StatusBadge status={d.onboarding_status} /></Kpi>
         <Kpi label="Counsellor" value={d.counsellor ? "Assigned" : "Pending"}>{d.counsellor?.name || "Awaiting assignment"}</Kpi>
-        <Kpi label="Applications" value={d.applications.open}>{d.applications.total} in total{d.applications.overdue ? <> · <Overdue n={d.applications.overdue} /></> : null}</Kpi>
-        <Kpi label="Documents to upload" value={d.documents.needs_attention}>{d.documents.awaiting_review} with your counsellor</Kpi>
+        <Kpi label="Open applications" value={d.applications.open} to="/applications/?open=1">{d.applications.total} in total{d.applications.overdue ? <> · <Overdue n={d.applications.overdue} /></> : null}</Kpi>
+        <Kpi label="Documents to upload" value={d.documents.needs_attention} to="/documents/">{d.documents.awaiting_review} waiting to be checked</Kpi>
       </div>
       <div className="cards-3">
         <DeadlinesCard apps={d.applications} />
@@ -147,7 +149,7 @@ function StudentDashboard({ d }) {
             <h3>{missing.length ? "Still needed to reach 100%" : "Profile complete"}</h3>
             {missing.length
               ? <ul className="missing-list">{missing.map((m) => <li key={m.field}>{m.label}</li>)}</ul>
-              : <p className="muted">Every required field is filled in. Your counsellor can now shortlist programmes.</p>}
+              : <p className="muted">Every required field is filled in. Your counsellor can now help you shortlist universities.</p>}
           </div>
         </div>
         <div className="stack">
@@ -189,15 +191,15 @@ function CounsellorDashboard({ d }) {
   const w = d.workload || { assigned: 0, capacity: 0, available: 0, utilisation_pct: 0 };
   return (
     <>
-      <Head title={`Help your students get there, ${d.name.split(" ")[0]}`} subtitle="See who needs you first: upcoming sessions, pending documents and applications nearing their deadlines.">
-        <Link className="btn btn-primary" to="/students/">Open roster</Link>
+      <Head eyebrow={`Hello, ${d.name.split(" ")[0]}`} title="Who needs you first" subtitle="Upcoming sessions, documents to review and applications nearing their deadlines.">
+        <Link className="btn btn-primary" to="/students/">My students</Link>
       </Head>
       <div className="kpis">
-        <Kpi label="Assigned students" value={w.assigned}>of {w.capacity} capacity</Kpi>
-        <Kpi label="Open applications" value={d.applications.open}>{d.applications.due_soon} due in 14 days{d.applications.overdue ? <> · <Overdue n={d.applications.overdue} /></> : null}</Kpi>
-        <Kpi label="Documents to review" value={d.documents.awaiting_review}><Link to="/documents/">Open review queue →</Link></Kpi>
-        <Kpi label="Follow-ups" value={d.follow_ups.pending}>{d.follow_ups.overdue ? <Overdue n={d.follow_ups.overdue} /> : "None overdue"}</Kpi>
-        <Kpi label="Open slots" value={w.available}><ProgressBar pct={w.utilisation_pct} label={`${w.utilisation_pct}% used`} /></Kpi>
+        <Kpi label="Assigned students" value={w.assigned} to="/students/">of {w.capacity} capacity</Kpi>
+        <Kpi label="Open applications" value={d.applications.open} to="/applications/?open=1">{d.applications.due_soon} due in 14 days{d.applications.overdue ? <> · <Overdue n={d.applications.overdue} /></> : null}</Kpi>
+        <Kpi label="Documents to review" value={d.documents.awaiting_review} to="/documents/">Uploaded or being checked</Kpi>
+        <Kpi label="Follow-ups" value={d.follow_ups.pending} to="/counselling/?tab=follow-ups">{d.follow_ups.overdue ? <Overdue n={d.follow_ups.overdue} /> : "None overdue"}</Kpi>
+        <Kpi label="Open slots" value={w.available}><ProgressBar pct={w.utilisation_pct} label={`${w.utilisation_pct}% used`} name="Capacity used" /></Kpi>
       </div>
       <div className="cards-3">
         <SessionsCard sessions={d.upcoming_sessions} showStudent />
@@ -217,18 +219,18 @@ function AdminDashboard({ d }) {
   const rows = d.counsellor_workload;
   return (
     <>
-      <Head title="Run your admissions agency with clarity" subtitle="Agency-wide applications, student onboarding and counsellor workload, so no student goes unassigned.">
+      <Head title="Agency overview" subtitle="Applications, student onboarding and counsellor workload across the agency.">
         <Link className="btn btn-outline" to="/students/?unassigned=1">Assign students</Link>
         <Link className="btn btn-primary" to="/counsellors/?new=1">Add counsellor</Link>
       </Head>
       <div className="kpis">
-        <Kpi label="Students" value={t.students}>{t.unassigned_students} awaiting a counsellor</Kpi>
-        <Kpi label="Counsellors" value={t.counsellors}>{t.active_counsellors} active</Kpi>
-        <Kpi label="Open applications" value={d.applications.open}>{d.applications.total} in total · {d.applications.overdue} overdue</Kpi>
-        <Kpi label="Documents to review" value={d.documents.awaiting_review}>{d.documents.needs_attention} waiting on students</Kpi>
+        <Kpi label="Students" value={t.students} to="/students/">{t.unassigned_students} awaiting a counsellor</Kpi>
+        <Kpi label="Counsellors" value={t.counsellors} to="/counsellors/">{t.active_counsellors} active</Kpi>
+        <Kpi label="Open applications" value={d.applications.open} to="/applications/?open=1">{d.applications.total} in total · {d.applications.overdue} overdue</Kpi>
+        <Kpi label="Documents to review" value={d.documents.awaiting_review} to="/documents/">{d.documents.needs_attention} waiting on students</Kpi>
       </div>
       {t.unassigned_students > 0 && (
-        <div className="alert alert-warn">{t.unassigned_students} student(s) have no counsellor. <Link to="/students/?unassigned=1">Assign them now →</Link></div>
+        <div className="alert alert-warn">{plural(t.unassigned_students, "student")} {t.unassigned_students === 1 ? "has" : "have"} no counsellor. <Link to="/students/?unassigned=1">Assign {t.unassigned_students === 1 ? "one" : "them"} now →</Link></div>
       )}
       <div className="cards-3">
         <PipelineCard apps={d.applications} />
@@ -242,7 +244,7 @@ function AdminDashboard({ d }) {
             <thead><tr><th>Counsellor</th><th>Assigned</th><th style={{ width: "40%" }}>Utilisation</th></tr></thead>
             <tbody>
               {rows.map((c) => (
-                <tr key={c.id || c.name}><td className="name">{c.name}</td><td>{c.assigned} / {c.capacity}</td><td><ProgressBar pct={c.utilisation_pct} /></td></tr>
+                <tr key={c.id || c.name}><td className="name">{c.name}</td><td>{c.assigned} / {c.capacity}</td><td><ProgressBar pct={c.utilisation_pct} name={`${c.name} utilisation`} /></td></tr>
               ))}
             </tbody>
           </table></div>
@@ -253,10 +255,10 @@ function AdminDashboard({ d }) {
 }
 
 export default function Dashboard() {
-  const { data, error } = useLoad(() => api("/dashboard/"), []);
+  const { data, error, reload } = useLoad(() => api("/dashboard/"), []);
   let body;
-  if (error) body = <><Head title="Dashboard" /><ErrorAlert error={error} /></>;
-  else if (!data) body = <><Head title="Dashboard" /><Loading /></>;
+  if (error) body = <><Head title="Dashboard" /><ErrorAlert error={error} onRetry={reload}>Could not load your dashboard. {error.message}</ErrorAlert></>;
+  else if (!data) body = <><Head title="Dashboard" /><Loading text="Loading your dashboard…" /></>;
   else if (data.role === "student") body = <StudentDashboard d={data} />;
   else if (data.role === "counsellor") body = <CounsellorDashboard d={data} />;
   else body = <AdminDashboard d={data} />;

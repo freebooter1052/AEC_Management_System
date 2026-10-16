@@ -8,14 +8,16 @@ Root URL map.
               by the API, not by these routes.
 """
 
-from django.urls import include, path
+from django.urls import include, path, re_path
 from django.views.generic import RedirectView
 
-from apps.core.views import HealthView, frontend_app
+from apps.core.views import HealthView, frontend_app, frontend_not_found
+from apps.universities.views import CountryListView
 
 
 api_patterns = [
     path("health/", HealthView.as_view(), name="health"),
+    path("countries/", CountryListView.as_view(), name="countries"),
     path("auth/", include("apps.accounts.urls")),
     path("students/", include("apps.students.urls")),
     path("counsellors/", include("apps.counsellors.urls")),
@@ -46,5 +48,8 @@ page_patterns = [
 
 urlpatterns = [
     path("api/", include(api_patterns)),
+    path("favicon.ico", RedirectView.as_view(url="/static/favicon.svg", permanent=False)),
     *page_patterns,
+    # Any other page URL: the React app renders its "page not found" screen, with a real 404 status.
+    re_path(r"^(?!api/|static/).*/$", frontend_not_found),  # slashless URLs are first redirected by APPEND_SLASH
 ]

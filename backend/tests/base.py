@@ -55,7 +55,8 @@ class APITestCase(SimpleTestCase):
         return client
 
     def register(self, email="stu@aec.test", **extra):
-        body = {"first_name": "Asha", "last_name": "Nair", "email": email, "password": PASSWORD, **extra}
+        body = {"first_name": "Asha", "last_name": "Nair", "email": email, "password": PASSWORD,
+                "privacy_acknowledged": True, **extra}
         return self.client.post("/api/auth/register/", body, format="json")
 
     def create_counsellor(self, admin, email="coun@aec.test", **extra):
