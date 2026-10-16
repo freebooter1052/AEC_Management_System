@@ -1,6 +1,13 @@
 """Registration, login, tokens and account administration."""
 
+import re
+from datetime import datetime, timedelta, timezone
+
+from django.core import mail
+from django.test import override_settings
+
 from apps.accounts import users
+from apps.core import repository
 
 from .base import PASSWORD, APITestCase
 
@@ -76,3 +83,126 @@ class AuthTests(APITestCase):
         self.assertEqual(self.client.get("/api/auth/users/").status_code, 401)
         self.register(email="s2@aec.test")
         self.assertEqual(self.as_user("s2@aec.test").get("/api/auth/users/").status_code, 403)
+
+
+class ForgotPasswordTests(APITestCase):
+    def setUp(self):
+        super().setUp()
+        self.register()  # stu@aec.test
+        mail.outbox.clear()
+
+    def forgot(self, email="stu@aec.test"):
+        return self.client.post("/api/auth/forgot-password/", {"email": email}, format="json")
+
+    def sent_code(self):
+        self.assertEqual(len(mail.outbox), 1)
+        return re.search(r"code is: (\d{6})", mail.outbox[0].body).group(1)
+
+    def verify(self, code, email="stu@aec.test"):
+        return self.client.post("/api/auth/verify-reset-code/", {"email": email, "code": code}, format="json")
+
+    def reset(self, code, password="Brand-new1", email="stu@aec.test"):
+        return self.client.post("/api/auth/reset-password/",
+                                {"email": email, "code": code, "new_password": password}, format="json")
+
+    def test_full_flow_changes_password_and_revokes_sessions(self):
+        old_client = self.as_user("stu@aec.test")
+        self.assertEqual(self.forgot().status_code, 200)
+        code = self.sent_code()
+        self.assertEqual(mail.outbox[0].to, ["stu@aec.test"])
+        self.assertEqual(self.verify(code).status_code, 200)
+        self.assertEqual(self.reset(code).status_code, 200)
+
+        self.assertEqual(self.login("stu@aec.test").status_code, 401)  # old password no longer works
+        self.assertEqual(self.login("stu@aec.test", "Brand-new1").status_code, 200)
+        self.assertEqual(old_client.get("/api/auth/me/").status_code, 401)  # existing sessions revoked
+        self.assertEqual(self.reset(code, "Another-pw2").status_code, 400)  # a code works once
+
+    def test_code_is_never_stored_in_plain_text(self):
+        self.forgot()
+        code = self.sent_code()
+        doc = repository.find_one({"type": "password_reset"})
+        self.assertNotIn(code, str(doc))
+
+    def test_same_answer_for_unknown_email_and_no_mail_sent(self):
+        known = self.forgot()
+        mail.outbox.clear()
+        unknown = self.forgot("nobody@aec.test")
+        self.assertEqual(unknown.status_code, 200)
+        self.assertEqual(unknown.data, known.data)
+        self.assertEqual(mail.outbox, [])
+        self.assertEqual(self.verify("123456", "nobody@aec.test").status_code, 400)
+
+    def test_inactive_account_gets_no_code(self):
+        user = users.get_by_email("stu@aec.test")
+        user["is_active"] = False
+        repository.save(user)
+        self.assertEqual(self.forgot().status_code, 200)
+        self.assertEqual(mail.outbox, [])
+
+    def test_wrong_code_is_rejected_and_locks_after_five_attempts(self):
+        self.forgot()
+        code = self.sent_code()
+        wrong = "000000" if code != "000000" else "111111"
+        for _ in range(5):
+            self.assertEqual(self.verify(wrong).status_code, 400)
+        self.assertEqual(self.verify(code).status_code, 400)  # even the right code is dead now
+        self.assertEqual(self.reset(code).status_code, 400)
+        self.assertEqual(self.login("stu@aec.test").status_code, 200)  # password untouched
+
+    def test_expired_code_is_rejected(self):
+        self.forgot()
+        code = self.sent_code()
+        doc = repository.find_one({"type": "password_reset"})
+        doc["expires_at"] = repository.to_iso(datetime.now(timezone.utc) - timedelta(seconds=1))
+        repository.save(doc)
+        self.assertEqual(self.verify(code).status_code, 400)
+        self.assertEqual(self.reset(code).status_code, 400)
+
+    def test_cooldown_then_new_code_replaces_the_old_one(self):
+        self.forgot()
+        first = self.sent_code()
+        mail.outbox.clear()
+        self.forgot()  # inside the cooldown: same answer, no second email
+        self.assertEqual(mail.outbox, [])
+
+        with override_settings(PASSWORD_RESET_COOLDOWN=0):
+            for _ in range(50):  # a fresh code differs from the old one (almost always); retry on the 1-in-a-million tie
+                mail.outbox.clear()
+                self.forgot()
+                second = self.sent_code()
+                if second != first:
+                    break
+        self.assertEqual(repository.count({"type": "password_reset"}), 1)  # one live code per user
+        self.assertEqual(self.verify(first).status_code, 400)
+        self.assertEqual(self.verify(second).status_code, 200)
+
+    def test_new_password_must_be_strong_and_code_well_formed(self):
+        self.forgot()
+        code = self.sent_code()
+        res = self.reset(code, "weak")
+        self.assertEqual(res.status_code, 400)
+        self.assertIn("new_password", res.data)
+        self.assertEqual(self.login("stu@aec.test").status_code, 200)
+        self.assertIn("code", self.verify("12ab").data)  # not 6 digits
+
+    def test_works_for_counsellor_and_admin_accounts(self):
+        admin = self.as_user("admin@aec.test")
+        self.create_counsellor(admin)
+        for email in ("coun@aec.test", "admin@aec.test"):
+            mail.outbox.clear()
+            self.forgot(email)
+            self.assertEqual(self.reset(self.sent_code(), "Brand-new1", email).status_code, 200)
+            self.assertEqual(self.login(email, "Brand-new1").status_code, 200)
+
+    def test_mail_failure_does_not_change_the_response(self):
+        with override_settings(MAILERS={"default": {"BACKEND": "tests.test_accounts.BrokenMailBackend"}}):
+            self.assertEqual(self.forgot().status_code, 200)
+
+
+from django.core.mail.backends.base import BaseEmailBackend  # noqa: E402
+
+
+class BrokenMailBackend(BaseEmailBackend):
+    def send_messages(self, email_messages):
+        raise OSError("SMTP down")

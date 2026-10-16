@@ -8,4 +8,8 @@ __pycache__/
 # Local CouchDB dataset exports - never commit
 /output/
 /backend/staticfiles/
+
+# React frontend: dependencies and build output (rebuilt by `npm run build` / run.ps1)
+/frontend/node_modules/
+/frontend/dist/
 # /CLAUDE.md

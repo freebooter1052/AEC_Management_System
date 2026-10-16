@@ -6,6 +6,7 @@ index() and info().
 """
 
 import copy
+import io
 import re
 import uuid
 from types import SimpleNamespace
@@ -81,6 +82,7 @@ class FakeCouchDB:
     def __init__(self):
         self.docs: dict[str, dict] = {}
         self.indexes: dict = {}
+        self.attachments: dict[tuple[str, str], bytes] = {}
 
     def get(self, doc_id, default=None):
         doc = self.docs.get(doc_id)
@@ -104,6 +106,24 @@ class FakeCouchDB:
         if current is None or current["_rev"] != doc.get("_rev"):
             raise ResourceConflict(("conflict", "Document update conflict."))
         del self.docs[doc["_id"]]
+        for key in [k for k in self.attachments if k[0] == doc["_id"]]:
+            del self.attachments[key]
+
+    def put_attachment(self, doc, content, filename=None, content_type=None):
+        """Like couchdb-python: needs the current _rev, bumps it and records a stub on the stored doc."""
+        stored = copy.deepcopy(self.docs.get(doc["_id"]))
+        if stored is None or stored["_rev"] != doc.get("_rev"):
+            raise ResourceConflict(("conflict", "Document update conflict."))
+        content = content.encode() if isinstance(content, str) else bytes(content)
+        stored.setdefault("_attachments", {})[filename] = {"content_type": content_type, "length": len(content), "stub": True}
+        self.save(stored)
+        self.attachments[(doc["_id"], filename)] = content
+        doc["_rev"] = stored["_rev"]
+
+    def get_attachment(self, id_or_doc, filename, default=None):
+        doc_id = id_or_doc["_id"] if isinstance(id_or_doc, dict) else id_or_doc
+        content = self.attachments.get((doc_id, filename))
+        return io.BytesIO(content) if content is not None else default
 
     def find(self, query):
         selector = query.get("selector", {})

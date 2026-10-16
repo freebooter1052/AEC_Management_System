@@ -25,7 +25,7 @@ The system supports the entire **counselling-to-application workflow**, allowing
 
 | Layer | Technology / Component | Key Responsibilities |
 | :--- | :--- | :--- |
-| **Presentation Layer** | HTML5, CSS3, JavaScript, Bootstrap / React JS | Responsive web interface, forms, and role-specific dashboards |
+| **Presentation Layer** | React 18, React Router, Vite, CSS3 | Responsive single-page web interface, forms, and role-specific dashboards |
 | **API & Backend Layer**| Python, Django, Django REST Framework (DRF) | Business logic, authentication/authorization (RBAC), validation, RESTful endpoints |
 | **Database Layer** | Apache CouchDB (Document-Oriented NoSQL) | JSON document storage, revisions, views, and attachments |
 | **Version Control** | Git & GitHub | Source code management and team collaboration |
@@ -199,15 +199,20 @@ AEC_Management_System/
 │   │   ├── students/            Student profile documents, CRUD, counsellor assignment
 │   │   ├── counsellors/         Counsellor profiles, CRUD, workload
 │   │   ├── universities/        University & course search
-│   │   └── dashboard/           Role-specific dashboard summaries
+│   │   ├── dashboard/           Role-specific dashboard summaries
+│   │   ├── applications/        Applications, status workflow & history, intakes and deadlines
+│   │   ├── documents/           Document checklist, uploads (CouchDB attachments), verification
+│   │   └── counselling/         Counselling sessions, notes, follow-ups, calendar
 │   └── tests/                   API tests (run against an in-memory CouchDB stand-in)
-├── frontend/                    Web client (HTML/CSS/JS), served by Django on the same origin
-│   ├── templates/
-│   │   ├── layouts/             base.html, app.html (signed-in shell), auth.html (login/register)
-│   │   └── pages/               One template per screen
-│   └── static/
-│       ├── css/app.css          Design tokens & components
-│       └── js/                  app.js (API client, session, shell) + pages/<screen>.js
+├── frontend/                    React web client (Vite), built into frontend/dist and served by Django
+│   ├── package.json             npm scripts: dev, build
+│   ├── vite.config.js           Build to dist/ under /static/; dev server proxies /api to Django
+│   └── src/
+│       ├── App.jsx              Routes and role-based route guard
+│       ├── lib/                 API client & session, form helpers, data-loading hooks
+│       ├── components/          App shell (sidebar/top bar), drawers, toasts, badges, document widgets
+│       ├── pages/               One component per screen
+│       └── styles/app.css       Design tokens & components
 ├── docs/                        Sprint notes and project documentation
 ├── .env.example                 Configuration template (copy to .env, never commit .env)
 └── output/                      Local dataset exports (git-ignored, never committed)
@@ -228,6 +233,7 @@ After initial setup, simply run from the repository root in **PowerShell as Admi
 
 ### Prerequisites
 - **Python 3.10+**
+- **Node.js 18+** (with npm) to build the React frontend
 - **Apache CouchDB 3.x+** running locally or accessible over network (default: `http://127.0.0.1:5984/`)
 - **Git**
 - **PowerShell** (for using `run.ps1` script)
@@ -242,6 +248,11 @@ After initial setup, simply run from the repository root in **PowerShell as Admi
 
 2. **Configure Environment Variables**: copy `.env.example` to `.env` in the repository root and fill in
    your CouchDB credentials and a `DJANGO_SECRET_KEY`.
+
+   **Forgot password:** users reset their own password from the sign-in page with a 6-digit code sent by
+   email (valid 10 minutes). With `EMAIL_HOST` left empty the code is printed in the `runserver` console,
+   which is enough for development. To send real email set `EMAIL_HOST`, `EMAIL_HOST_USER` and
+   `EMAIL_HOST_PASSWORD` in `.env` (for Gmail, `smtp.gmail.com` and an App Password); see `.env.example`.
 
 3. **Set Up the Backend** (all commands run from `backend/`)
    ```bash
@@ -258,28 +269,37 @@ After initial setup, simply run from the repository root in **PowerShell as Admi
    python manage.py create_admin --email you@example.com # first administrator (prompts for password)
    ```
 
-5. **Start the Development Server**
-   
+5. **Start the Application**
+
    Use the provided `run.ps1` script to start everything in one command (recommended):
    ```powershell
    # Run from the repository root in PowerShell (as Administrator)
    .\run.ps1
    ```
-   
+
    This script will:
    - Start the Apache CouchDB service
    - Initialize the database and Mango indexes
+   - Install the frontend packages (first run only) and build the React app
    - Start the Django development server
-   
+
    Access the application in your browser at `http://127.0.0.1:8000/`.
-   
+
    **Alternative (manual steps):**
    ```bash
-   # From backend/ directory
-   python manage.py runserver
+   cd frontend && npm install && npm run build      # build the React app into frontend/dist
+   cd ../backend && python manage.py runserver      # serves the UI and the API on :8000
    ```
 
-6. **Run the Tests** (no CouchDB needed)
+6. **Working on the Frontend** (live reload)
+   ```bash
+   # keep `python manage.py runserver` running on :8000, then in frontend/:
+   npm run dev                                      # http://127.0.0.1:5173 - changes appear instantly
+   ```
+   Re-run `npm run build` (or `.\run.ps1`) to update what is served on :8000. Built files have
+   content-hashed names, so browsers always load the latest version with no cache clearing.
+
+7. **Run the Tests** (no CouchDB needed)
    ```bash
    python manage.py test tests
    ```

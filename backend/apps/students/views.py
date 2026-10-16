@@ -131,7 +131,8 @@ class StudentDetailView(APIView):
     """
     GET    /api/students/<id>/ - admin, the assigned counsellor, or the student themself.
     PATCH  /api/students/<id>/ - same audience; counsellor_id cannot be changed here.
-    DELETE /api/students/<id>/ - admins only; removes the profile and its login account.
+    DELETE /api/students/<id>/ - admins only; removes the profile, its login account and its
+           applications, documents and counselling sessions.
     """
 
     def get_permissions(self):
@@ -151,11 +152,12 @@ class StudentDetailView(APIView):
             services.assign_counsellor(doc, None, actor=request.user, request=request)
             doc = get_student_or_404(student_id)
         user = repository.get(doc.get("user_id"), "user")
+        records = services.delete_workflow_records(student_id)
         repository.delete(doc)
         if user is not None:
             repository.delete(user)
         audit.record("student.deleted", request=request, actor=request.user, target_id=student_id,
-                     details={"email": doc.get("personal", {}).get("email")})
+                     details={"email": doc.get("personal", {}).get("email"), "workflow_records": records})
         return Response(status=status.HTTP_204_NO_CONTENT)
 
 

@@ -7,6 +7,8 @@ Database maintenance: full JSON backups and the one-off purge of demo/seed data.
   * the student/counsellor profiles those users link to via `profile_id`;
   * catalogue data (`university`, `course`);
   * audit entries performed by, or about, the kept records;
+  * workflow documents (applications, documents, sessions, ...) that belong to
+    a kept student or user - since Sprint 2 people create these through the app;
   * the intentional sample dataset (`"source": "seed"`, see seeding.py), which
     has its own removal command (`seed_dataset --remove`).
 Everything else of a people/workflow type is demo data and is removed.
@@ -27,6 +29,13 @@ PEOPLE_TYPES = {"user", "student", "counsellor"}
 CATALOGUE_TYPES = {"university", "course"}
 WORKFLOW_TYPES = {"application", "document", "counselling_session", "application_history",
                   "recommendation", "notification"}
+# How a workflow document points at its owner: kept when that owner is kept. Ordered so an
+# application is decided before its history entries.
+WORKFLOW_OWNER = [
+    ("application", "student_id"), ("document", "student_id"), ("counselling_session", "student_id"),
+    ("recommendation", "student_id"), ("application_history", "application_id"),
+    ("notification", "recipient_user_id"),
+]
 # Mango indexes left behind by earlier seed scripts (`doc_type`-based or test leftovers).
 JUNK_INDEXES = {"foo-json-index", "doctype_status_idx", "idx_doctype_counsellor", "idx_doctype_student"}
 BACKUP_DIR = settings.REPO_ROOT / "output" / "backups"
@@ -77,6 +86,7 @@ def plan_purge(docs: list[dict]) -> PurgePlan:
 
     kept_ids: set[str] = set()
     pending_audit = []
+    pending_workflow: dict[str, list[dict]] = {}
     for d in docs:
         t = d.get("type")
         if d.get("source") == "seed":
@@ -89,7 +99,10 @@ def plan_purge(docs: list[dict]) -> PurgePlan:
             keep = d["_id"] in kept_profiles and d.get("user_id") in kept_users
         elif t in CATALOGUE_TYPES:
             keep = True
-        elif t in WORKFLOW_TYPES or (t is None and d.get("doc_type")):
+        elif t in WORKFLOW_TYPES:
+            pending_workflow.setdefault(t, []).append(d)
+            continue
+        elif t is None and d.get("doc_type"):
             keep = False
         elif t == "audit_log":
             pending_audit.append(d)
@@ -100,6 +113,13 @@ def plan_purge(docs: list[dict]) -> PurgePlan:
         (plan.keep if keep else plan.delete).append(d)
         if keep:
             kept_ids.add(d["_id"])
+
+    for t, owner_field in WORKFLOW_OWNER:
+        for d in pending_workflow.get(t, []):
+            keep = d.get(owner_field) in kept_ids or d.get(owner_field) in kept_users
+            (plan.keep if keep else plan.delete).append(d)
+            if keep:
+                kept_ids.add(d["_id"])
 
     for a in pending_audit:
         keep = a.get("actor_id") in kept_users or a.get("target_id") in kept_ids

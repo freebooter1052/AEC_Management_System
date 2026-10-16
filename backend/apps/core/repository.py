@@ -9,7 +9,7 @@ backed by the indexes created by `manage.py init_couchdb`.
 
 import re
 import uuid
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 
 from django.conf import settings
 
@@ -21,6 +21,16 @@ _SCAN_LIMIT = 100_000
 
 def now_iso() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def to_iso(value: datetime) -> str:
+    """An aware datetime as the stored UTC string (`2026-10-13T18:24:04Z`)."""
+    return value.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def today() -> date:
+    """Today's date in UTC (the server's TIME_ZONE); used for deadline arithmetic."""
+    return datetime.now(timezone.utc).date()
 
 
 def new_id(doc_type: str) -> str:
@@ -49,6 +59,17 @@ def save(doc: dict) -> dict:
 
 def delete(doc: dict) -> None:
     get_db().delete(doc)
+
+
+def put_attachment(doc: dict, content: bytes, name: str, content_type: str) -> dict:
+    """Store a binary attachment on a saved document. Updates `doc["_rev"]` in place."""
+    get_db().put_attachment(doc, content, filename=name, content_type=content_type)
+    return doc
+
+
+def get_attachment(doc_id: str, name: str) -> bytes | None:
+    stream = get_db().get_attachment(doc_id, name)
+    return stream.read() if stream is not None else None
 
 
 def find(selector: dict, *, fields=None, sort=None, limit: int = _SCAN_LIMIT, skip: int = 0) -> list[dict]:
@@ -109,6 +130,7 @@ def contains_pattern(text: str) -> str:
 
 
 def public(doc: dict) -> dict:
-    """Expose `_id` as `id` and `_rev` as `rev` (clients echo `rev` back for conflict detection)."""
-    out = {k: v for k, v in doc.items() if k not in ("_id", "_rev")}
+    """Expose `_id` as `id` and `_rev` as `rev` (clients echo `rev` back for conflict detection).
+    Attachment stubs stay internal; files are served by their own endpoints."""
+    out = {k: v for k, v in doc.items() if k not in ("_id", "_rev", "_attachments")}
     return {"id": doc.get("_id"), "rev": doc.get("_rev"), **out}

@@ -37,6 +37,19 @@ class ChangePasswordSerializer(serializers.Serializer):
     new_password = serializers.CharField(trim_whitespace=False, validators=[validate_password_strength])
 
 
+class ForgotPasswordSerializer(serializers.Serializer):
+    email = serializers.EmailField()
+
+
+class VerifyResetCodeSerializer(serializers.Serializer):
+    email = serializers.EmailField()
+    code = serializers.RegexField(r"^\d{6}$", error_messages={"invalid": "Enter the 6-digit code from the email."})
+
+
+class ResetPasswordSerializer(VerifyResetCodeSerializer):
+    new_password = serializers.CharField(trim_whitespace=False, validators=[validate_password_strength])
+
+
 class UserAdminUpdateSerializer(serializers.Serializer):
     is_active = serializers.BooleanField(required=False)
     full_name = serializers.CharField(max_length=160, required=False)
