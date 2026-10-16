@@ -118,7 +118,7 @@ function StudentDashboard({ d }) {
   const dd = { margin: 0 };
   return (
     <>
-      <Head title={`Welcome, ${d.full_name.split(" ")[0] || "there"}`} subtitle="Your application readiness at a glance.">
+      <Head title={`Your journey abroad starts here, ${d.full_name.split(" ")[0] || "there"}`} subtitle="Build your profile, shortlist universities, and track every application and document in one place, with a counsellor guiding each step.">
         <Link className="btn btn-primary" to="/profile/">Update profile</Link>
       </Head>
       <div className="kpis">
@@ -189,7 +189,7 @@ function CounsellorDashboard({ d }) {
   const w = d.workload || { assigned: 0, capacity: 0, available: 0, utilisation_pct: 0 };
   return (
     <>
-      <Head title={`Good to see you, ${d.name.split(" ")[0]}`} subtitle="Your caseload and the students who need attention first.">
+      <Head title={`Help your students get there, ${d.name.split(" ")[0]}`} subtitle="See who needs you first: upcoming sessions, pending documents and applications nearing their deadlines.">
         <Link className="btn btn-primary" to="/students/">Open roster</Link>
       </Head>
       <div className="kpis">
@@ -217,7 +217,7 @@ function AdminDashboard({ d }) {
   const rows = d.counsellor_workload;
   return (
     <>
-      <Head title="Administrator console" subtitle="Agency-wide totals and counsellor workload.">
+      <Head title="Run your admissions agency with clarity" subtitle="Agency-wide applications, student onboarding and counsellor workload, so no student goes unassigned.">
         <Link className="btn btn-outline" to="/students/?unassigned=1">Assign students</Link>
         <Link className="btn btn-primary" to="/counsellors/?new=1">Add counsellor</Link>
       </Head>

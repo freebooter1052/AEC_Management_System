@@ -151,6 +151,19 @@ input[readonly] { background: var(--surface-2); color: var(--muted); }
   border-bottom: 1px solid var(--line); position: sticky; top: 0; z-index: 5; }
 .topbar .who { display: flex; align-items: center; gap: .7rem; }
 .avatar { width: 2.3rem; height: 2.3rem; border-radius: 50%; background: linear-gradient(135deg, #fff4e5, #fde0b8); color: var(--primary-strong); box-shadow: 0 0 0 2px #fff, 0 0 0 3px #f6d7a8; display: grid; place-items: center; font-weight: 700; font-size: .85rem; }
+.account { position: relative; }
+.account-btn { display: flex; flex-direction: column; align-items: center; gap: .25rem; background: none; border: 0; padding: .15rem .3rem; border-radius: var(--radius-sm); cursor: pointer; }
+.account-btn:hover .avatar, .account-btn[aria-expanded="true"] .avatar { box-shadow: 0 0 0 2px #fff, 0 0 0 4px var(--primary); }
+.account-btn .role-badge { font-size: .62rem; padding: .08rem .45rem; }
+.avatar-lg { width: 3rem; height: 3rem; font-size: 1rem; flex: none; }
+.account-menu { position: absolute; right: 0; top: calc(100% + .5rem); width: 280px; background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); box-shadow: var(--shadow-lg); padding: .5rem; z-index: 50; }
+.account-head { display: flex; gap: .8rem; align-items: center; padding: .7rem .6rem .9rem; border-bottom: 1px solid var(--line); margin-bottom: .4rem; }
+.account-head > div { min-width: 0; display: grid; gap: .15rem; justify-items: start; }
+.account-name { font-weight: 700; }
+.account-email { overflow-wrap: anywhere; }
+.account-item { display: block; width: 100%; text-align: left; padding: .6rem .7rem; border-radius: var(--radius-sm); background: none; border: 0; font: 600 .9rem var(--font-body); color: var(--ink); cursor: pointer; text-decoration: none; }
+.account-item:hover { background: var(--primary-soft); }
+.account-out { color: #b42318; }
 .role-badge { font-size: .7rem; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; padding: .15rem .5rem; border-radius: 999px; background: var(--surface-2); color: var(--ink-2); }
 .menu-toggle { display: none; }
 .content { padding: 1.8rem 2rem 3rem; max-width: 1280px; width: 100%; }
@@ -277,7 +290,8 @@ td .name { font-weight: 600; color: var(--ink); }
   .grid-2, .grid-3, .grid-4 { grid-template-columns: minmax(0, 1fr); }
   .span-2 { grid-column: auto; }
   .toolbar input, .toolbar select { min-width: 0; width: 100%; }
-  .topbar .who .meta, .topbar .role-badge, #crumb { display: none; }
+  .account-btn .role-badge, #crumb { display: none; }
+  .account-menu { width: min(280px, calc(100vw - 2rem)); }
   .topbar { justify-content: space-between; }
   th, td { padding: .6rem .8rem; }
 }

@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link, useLocation } from "react-router-dom";
 import { useAuth } from "./auth";
 import { initials } from "../lib/format";
@@ -24,6 +24,7 @@ const NAV = {
     ["applications", "Applications", "/applications/"], ["documents", "Documents", "/documents/"], ["counselling", "Counselling", "/counselling/"],
     ["universities", "Universities", "/universities/"]],
 };
+const PROFILE_LINK = { student: "/profile/", counsellor: "/counsellors/" };
 export const ROLE_LABEL = { student: "Student", counsellor: "Counsellor", admin: "Administrator" };
 
 export function usePageTitle(title) {
@@ -36,7 +37,16 @@ export default function AppShell({ title, crumb, children }) {
   const location = useLocation();
   const [menuOpen, setMenuOpen] = useState(false);
   usePageTitle(title);
-  useEffect(() => setMenuOpen(false), [location.pathname]);
+  const [accountOpen, setAccountOpen] = useState(false);
+  const accountRef = useRef(null);
+  useEffect(() => { setMenuOpen(false); setAccountOpen(false); }, [location.pathname]);
+  useEffect(() => {
+    if (!accountOpen) return undefined;
+    const close = (e) => { if (e.type === "keydown" ? e.key === "Escape" : !accountRef.current?.contains(e.target)) setAccountOpen(false); };
+    document.addEventListener("mousedown", close);
+    document.addEventListener("keydown", close);
+    return () => { document.removeEventListener("mousedown", close); document.removeEventListener("keydown", close); };
+  }, [accountOpen]);
 
   const here = location.pathname;
   const name = user.full_name || user.email;
@@ -60,14 +70,25 @@ export default function AppShell({ title, crumb, children }) {
         <header className="topbar">
           <button className="btn btn-outline btn-sm menu-toggle" aria-label="Toggle navigation" onClick={() => setMenuOpen((o) => !o)}>Menu</button>
           <div className="muted small" id="crumb">{crumb}</div>
-          <div className="who">
-            <div className="meta" style={{ textAlign: "right" }}>
-              <div style={{ fontWeight: 600 }}>{name}</div>
-              <div className="small muted">{user.email}</div>
-            </div>
-            <span className="role-badge">{ROLE_LABEL[user.role] || user.role}</span>
-            <div className="avatar" aria-hidden="true">{initials(name)}</div>
-            <button className="btn btn-outline btn-sm" onClick={signOut}>Sign out</button>
+          <div className="account" ref={accountRef}>
+            <button className="account-btn" aria-haspopup="menu" aria-expanded={accountOpen} aria-label="Account menu" onClick={() => setAccountOpen((o) => !o)}>
+              <span className="avatar">{initials(name)}</span>
+              <span className="role-badge">{ROLE_LABEL[user.role] || user.role}</span>
+            </button>
+            {accountOpen && (
+              <div className="account-menu" role="menu">
+                <div className="account-head">
+                  <span className="avatar avatar-lg">{initials(name)}</span>
+                  <div>
+                    <div className="account-name">{name}</div>
+                    <div className="small muted account-email">{user.email}</div>
+                    <span className="role-badge">{ROLE_LABEL[user.role] || user.role}</span>
+                  </div>
+                </div>
+                {PROFILE_LINK[user.role] && <Link role="menuitem" className="account-item" to={PROFILE_LINK[user.role]}>My profile</Link>}
+                <button role="menuitem" className="account-item account-out" onClick={signOut}>Sign out</button>
+              </div>
+            )}
           </div>
         </header>
         <main className="content">{children}</main>
