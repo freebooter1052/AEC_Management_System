@@ -219,9 +219,6 @@ td .name { font-weight: 600; color: var(--ink); }
 .counsellor-dock dl { display: grid; grid-template-columns: auto 1fr; gap: .3rem .8rem; margin: 0; font-size: .86rem; }
 .counsellor-dock dt { color: var(--muted); }
 .counsellor-dock dd { margin: 0; overflow-wrap: anywhere; }
-details.json { border: 1px solid var(--line); border-radius: var(--radius-sm); background: var(--nav); color: #d8e1f0; }
-details.json summary { padding: .7rem .9rem; cursor: pointer; font: 600 .85rem var(--font-body); color: #fff; }
-details.json pre { margin: 0; padding: 0 .9rem .9rem; overflow: auto; max-height: 360px; font-size: .78rem; }
 .form-actions { display: flex; justify-content: flex-end; gap: .6rem; align-items: center; padding-top: .4rem; }
 .form-actions .status { margin-right: auto; font-size: .85rem; color: var(--muted); }
 

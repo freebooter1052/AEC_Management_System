@@ -313,7 +313,6 @@ export default function Profile() {
                 ))}
               </div>
             </div>
-            <details className="json"><summary>CouchDB document (JSON)</summary><pre>{JSON.stringify(doc, null, 2)}</pre></details>
           </div>
         </div>
       )}

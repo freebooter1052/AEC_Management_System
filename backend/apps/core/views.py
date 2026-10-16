@@ -12,7 +12,7 @@ def frontend_app(request, **kwargs):
     try:
         html = (settings.FRONTEND_DIR / "dist" / "index.html").read_text(encoding="utf-8")
     except FileNotFoundError:
-        return HttpResponse("The frontend has not been built. Run `npm install` and `npm run build` in frontend/.",
+        return HttpResponse("The application is temporarily unavailable.",
                             status=503, content_type="text/plain")
     response = HttpResponse(html)
     response["Cache-Control"] = "no-cache"  # always revalidate, so a new build is picked up straight away
@@ -27,7 +27,7 @@ class HealthView(APIView):
 
     def get(self, request):
         try:
-            info = get_db().info()
-            return Response({"status": "ok", "database": info.get("db_name"), "documents": info.get("doc_count")})
+            get_db().info()
+            return Response({"status": "ok"})
         except Exception:  # noqa: BLE001
-            return Response({"status": "degraded", "database": None}, status=503)
+            return Response({"status": "degraded"}, status=503)
