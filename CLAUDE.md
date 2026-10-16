@@ -31,11 +31,12 @@ Frontend commands run from `frontend/` (Node 18+):
 npm install          # first time / after package.json changes
 npm run build        # production build -> frontend/dist (what Django serves on :8000)
 npm run dev          # hot-reload dev server on http://127.0.0.1:5173 (needs runserver on :8000 for /api)
+npm test             # unit tests for src/lib (Node's built-in runner, tests/*.test.js; no browser needed)
 ```
 
 `.\run.ps1` (repo root, Administrator) starts CouchDB, runs `init_couchdb`, installs and builds the frontend, then runs the server.
 
-There is no linter, formatter or test runner for the frontend, and **no migrations**: `DATABASES = {}`, and `django.contrib.auth` is not installed.
+There is no linter or formatter for the frontend (its tests cover the plain helpers in `src/lib/`; keep JSX out of those files), and **no migrations**: `DATABASES = {}`, and `django.contrib.auth` is not installed.
 
 CouchDB runs as the Windows service "Apache CouchDB" (3.5, `http://127.0.0.1:5984`). Starting it needs an Administrator shell (`Start-Service "Apache CouchDB"`). Running `couchdb.cmd` directly crashes because it can't write logs under Program Files. Connection settings come from the repo-root `.env` (`COUCHDB_URL/USER/PASSWORD/NAME`, `DJANGO_SECRET_KEY`, …; see `.env.example`).
 
@@ -55,6 +56,7 @@ CouchDB runs as the Windows service "Apache CouchDB" (3.5, `http://127.0.0.1:598
 - Tokens are `django.core.signing` payloads `{uid, v}` sent as `Authorization: Bearer …` and read by `apps/accounts/backends.CouchTokenAuthentication`.
 - `v` must equal `user.token_version`. Logout, password change and deactivation bump the version, which revokes every older token.
 - `request.user` is an `AuthUser` exposing `.id/.role/.profile_id/.doc`.
+- Registration requires `privacy_acknowledged: true` (stored as `user.privacy_acknowledged_at`). The notice text is in `pages/Register.jsx`; there is no approved Privacy Policy or Terms page yet, so none is linked.
 - **Forgot password** (`accounts/password_reset.py`, endpoints `forgot-password/`, `verify-reset-code/`, `reset-password/`): a 6-digit code is emailed and kept only as an HMAC in a `password_reset` doc (one per user, 10-minute expiry, 5 attempts, 60-second resend cooldown). The forgot endpoint answers identically for unknown, inactive and valid emails so it never reveals accounts. A reset goes through `users.set_password`, so every existing token is revoked. Mail uses Django 6.1 `MAILERS` (the old `EMAIL_*` settings are deprecated and must not be defined). With no `EMAIL_HOST` in `.env` the code is printed in the `runserver` console; set `EMAIL_HOST/EMAIL_HOST_USER/EMAIL_HOST_PASSWORD` for real email.
 
 **Authorization** is enforced only in the API.
@@ -77,11 +79,16 @@ CouchDB runs as the Windows service "Apache CouchDB" (3.5, `http://127.0.0.1:598
 
 **Frontend.** A React 18 single-page app (Vite, React Router, plain JSX, no other UI libraries) in `frontend/`. `npm run build` writes `frontend/dist`; Django serves it on the same origin as the API. Every page URL in `config/urls.py` maps to `apps/core/views.frontend_app`, which returns `dist/index.html` with `Cache-Control: no-cache`, and React Router renders the page. Built assets are served under `/static/assets/` with content-hashed names, so browsers never run stale code. `dist/` and `node_modules/` are git-ignored; `run.ps1` builds before starting the server. For live editing, run `npm run dev` (http://127.0.0.1:5173, hot reload, proxies `/api` to Django on :8000).
 - `src/lib/api.js`: the `api()` client (401 → clears the session and redirects to login; `form` for FormData uploads), `download()` for authenticated files, and the `session` (token in `localStorage` as `aec.token`/`aec.user`).
-- `src/lib/form.js`: `useForm` (`bind(path, type)` for dotted paths, `showErrors(drfErrors)`), `fieldErrors`, `trimStrings`. `src/lib/useLoad.js` loads data when deps change and ignores stale responses.
+- `src/lib/form.js`: `useForm` (`bind(path, type)` for dotted paths, `showErrors(drfErrors)`), `fieldErrors`, `saveErrorMessage`, `trimStrings`. `src/lib/useLoad.js` loads data when deps change and ignores stale responses.
+- `ApiError.message` is always user-facing (`friendlyMessage` in `api.js`: field keys become labels, no server internals). Every async action goes through `useSubmit()` (`[busy, run]`), which drops repeat calls while one is in flight.
+- List filters/page live in the URL via `useQueryState(spec)` (history.replaceState, validated against the spec). Never put a student's name in the URL; the Students search uses `useSessionText`.
+- Staff pick students with `components/StudentPicker` (server-side search, `GET /api/students/?q=`), never a fixed-size `<select>`. Countries use `CountryPicker`/`CountryChips` (canonical list from `GET /api/countries/`).
+- Destructive actions use `ConfirmDialog` (components/Dialog.jsx), never `window.confirm/prompt`. `Drawer` and `ConfirmDialog` share `useModal` (focus trap, Escape, focus restore, scroll lock).
+- Dates: `formatDate` treats `YYYY-MM-DD` as a calendar date (no UTC shift); status wording for display is in `lib/labels.js` (stored enum values never change).
 - `src/App.jsx`: routes plus `RequireAuth(roles)`, which redirects before a page mounts. Routes are keyed by URL, so each navigation starts the page fresh. Pages update filter query strings with `window.history.replaceState`, which doesn't remount them.
-- `src/components/`: `Shell.jsx` (sidebar, role-based nav, top bar), `AuthLayout.jsx`, `Drawer.jsx`, `Toast.jsx` (`useToast`), `ui.jsx` (`Field`, `Pager`, `Kpi`, `ProgressBar` and the status/deadline badges), `Documents.jsx` (`DocRow`, upload and review drawers via `useDocActions`) and `ChipsInput.jsx`.
+- `src/components/`: `Shell.jsx` (sidebar, role-based nav, top bar, account menu with Change password), `AuthLayout.jsx`, `Drawer.jsx`, `Dialog.jsx`, `Tabs.jsx`, `Combobox.jsx`, `StudentPicker.jsx`, `CountryPicker.jsx`, `ChangePassword.jsx`, `Toast.jsx` (`useToast(message, "success"|"info"|"warning"|"error")`), `ui.jsx` (`Field`, `Pager`, `Kpi`, `ProgressBar` and the status/deadline badges), `Documents.jsx` (`DocRow`, upload and review drawers via `useDocActions`) and `ChipsInput.jsx`.
 - One component per page in `src/pages/`.
-- The design tokens follow the PRD: Space Grotesk, primary `#b45309`, background `#f8f9ff`. They're CSS variables in `src/styles/app.css`, and components use its class names.
+- The design tokens follow the PRD: Space Grotesk, primary `#b45309`, background `#f8f9ff`. Fonts are bundled from `@fontsource-variable/*` (OFL), not loaded from Google. Keep white-on-primary text at 4.5:1 or more (the gradient runs `#b45309 → #92400e`). They're CSS variables in `src/styles/app.css`, and components use its class names.
 
 **Tests.** `backend/tests/` uses `SimpleTestCase` and DRF `APIClient` against `tests/fake_couch.FakeCouchDB`, an in-memory stand-in that supports get/save/delete with revision conflicts and a subset of Mango (`$eq/$ne/$in/$gt*/$lt*/$regex/$exists/$or/$and`, sort, skip, limit, fields). New Mango operators must be added there too. `tests/base.APITestCase` seeds an admin and provides `login/as_user/register/create_counsellor`. `tests/base.WorkflowTestCase` adds a small catalogue, intakes dated relative to today, a student assigned to counsellor A, and an unrelated counsellor B. The fake also supports `put_attachment/get_attachment`. Tests use the MD5 hasher for speed.
 

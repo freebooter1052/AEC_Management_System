@@ -522,7 +522,7 @@ class Seeder:
             required = [d for d in s["documents"] if d["status"] in ("Required", "Rejected", "Expired")]
             if required:
                 kinds = ", ".join(sorted({d["document_type"] for d in required}))
-                self.notify(uid, STUDENT, "missing_document", f"{len(required)} document(s) need your attention",
+                self.notify(uid, STUDENT, "missing_document", f"{len(required)} document{'' if len(required) == 1 else 's'} {'needs' if len(required) == 1 else 'need'} your attention",
                             f"Please upload or replace: {kinds}.", None, self.rng.uniform(0.5, 3))
             for app in s["applications"]:
                 snap = app["snapshot"]

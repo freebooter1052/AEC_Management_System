@@ -1,23 +1,22 @@
-import { useEffect, useRef } from "react";
+import { useId, useRef } from "react";
 import { createPortal } from "react-dom";
+import { useModal } from "./Dialog";
 
-/** Right-hand slide-over panel. Closes on Escape, backdrop click or the × button. */
-export default function Drawer({ title, onClose, footer, children }) {
+/**
+ * Right-hand slide-over panel (a modal dialog). Focus moves to its first field, stays inside while open
+ * and returns to the opener on close; Escape, the backdrop and the × button call `onClose`.
+ * `busy` marks the panel as busy for assistive technology while a request runs.
+ */
+export default function Drawer({ title, onClose, footer, busy = false, children }) {
   const ref = useRef(null);
-  const closeRef = useRef(onClose);
-  closeRef.current = onClose;
-  useEffect(() => {
-    const onKey = (e) => { if (e.key === "Escape") closeRef.current(); };
-    document.addEventListener("keydown", onKey);
-    const t = setTimeout(() => ref.current?.querySelector(".body input, .body select, .body textarea, .body button")?.focus(), 30);
-    return () => { document.removeEventListener("keydown", onKey); clearTimeout(t); };
-  }, []);
+  const titleId = useId();
+  useModal(ref, onClose);
 
   return createPortal(
     <>
       <div className="drawer-backdrop" onClick={onClose} />
-      <aside className="drawer" role="dialog" aria-modal="true" aria-label={title} ref={ref}>
-        <header><h2 style={{ margin: 0 }}>{title}</h2><button className="icon-btn" aria-label="Close" onClick={onClose}>&times;</button></header>
+      <aside className="drawer" role="dialog" aria-modal="true" aria-labelledby={titleId} aria-busy={busy || undefined} ref={ref} tabIndex={-1}>
+        <header><h2 id={titleId} tabIndex={-1} style={{ margin: 0 }}>{title}</h2><button type="button" className="icon-btn" aria-label="Close" onClick={onClose}>&times;</button></header>
         <div className="body">{children}</div>
         {footer && <footer>{footer}</footer>}
       </aside>

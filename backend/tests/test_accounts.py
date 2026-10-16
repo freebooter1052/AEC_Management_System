@@ -71,6 +71,58 @@ class AuthTests(APITestCase):
         self.assertEqual(client.get("/api/auth/me/").status_code, 401)  # old token revoked
         self.assertEqual(self.login("stu@aec.test", "NewSecret456").status_code, 200)
 
+    def test_change_password_keeps_the_new_session_and_validates(self):
+        self.register()
+        client = self.as_user("stu@aec.test")
+        url = "/api/auth/change-password/"
+
+        wrong = client.post(url, {"current_password": "Wrong999", "new_password": "NewSecret456"}, format="json")
+        self.assertEqual(wrong.status_code, 400)
+        self.assertIn("current_password", wrong.data)
+        weak = client.post(url, {"current_password": PASSWORD, "new_password": "short"}, format="json")
+        self.assertIn("new_password", weak.data)
+        letters = client.post(url, {"current_password": PASSWORD, "new_password": "onlyletters"}, format="json")
+        self.assertIn("new_password", letters.data)
+        same = client.post(url, {"current_password": PASSWORD, "new_password": PASSWORD}, format="json")
+        self.assertIn("new_password", same.data)
+        self.assertEqual(client.post(url, {}, format="json").status_code, 400)
+        self.assertEqual(self.client.post(url, {"current_password": PASSWORD, "new_password": "NewSecret456"},
+                                          format="json").status_code, 401)  # signed out
+        self.assertEqual(self.login("stu@aec.test").status_code, 200)  # nothing changed so far
+
+        res = client.post(url, {"current_password": PASSWORD, "new_password": "NewSecret456"}, format="json")
+        self.assertEqual(res.status_code, 200)
+        self.assertNotIn("password_hash", res.data["user"])
+        client.credentials(HTTP_AUTHORIZATION="Bearer " + res.data["token"])
+        self.assertEqual(client.get("/api/auth/me/").status_code, 200)  # the returned token keeps the user signed in
+
+    def test_change_password_only_affects_the_signed_in_user(self):
+        self.register()
+        self.register(email="other@aec.test")
+        client = self.as_user("stu@aec.test")
+        other_id = users.get_by_email("other@aec.test")["_id"]
+        res = client.post("/api/auth/change-password/", {"current_password": PASSWORD, "new_password": "NewSecret456",
+                                                         "user_id": other_id, "email": "other@aec.test"}, format="json")
+        self.assertEqual(res.status_code, 200)
+        self.assertEqual(self.login("other@aec.test").status_code, 200)  # untouched
+        self.assertEqual(self.login("other@aec.test", "NewSecret456").status_code, 401)
+        self.assertEqual(self.login("stu@aec.test", "NewSecret456").status_code, 200)
+
+    def test_register_requires_privacy_acknowledgement(self):
+        res = self.register(privacy_acknowledged=False)
+        self.assertEqual(res.status_code, 400)
+        self.assertIn("privacy_acknowledged", res.data)
+        body = {"first_name": "A", "last_name": "B", "email": "x@aec.test", "password": PASSWORD}
+        self.assertIn("privacy_acknowledged", self.client.post("/api/auth/register/", body, format="json").data)
+        self.assertIsNone(users.get_by_email("x@aec.test"))
+
+        res = self.register(citizenship="usa")
+        self.assertEqual(res.status_code, 201, res.data)
+        user = self.db.get(res.data["user"]["id"])
+        self.assertTrue(user["privacy_acknowledged_at"])
+        self.assertEqual(self.db.get(user["profile_id"])["personal"]["citizenship"], "United States")
+        self.assertIn("citizenship", self.register(email="y@aec.test", citizenship="Atlantis").data)
+
     def test_admin_user_management(self):
         self.register()
         admin = self.as_user("admin@aec.test")

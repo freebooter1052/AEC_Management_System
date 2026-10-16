@@ -1,7 +1,7 @@
 import { useState } from "react";
 
-/** Tag-style multi-value input: Enter or comma adds, Backspace on an empty input removes the last value. */
-export default function ChipsInput({ name, values, onChange, label, list, max = 10 }) {
+/** Tag-style multi-value text input: Enter or comma adds, Backspace on an empty input removes the last value. */
+export default function ChipsInput({ id, name, values, onChange, label, max = 10, ...aria }) {
   const [text, setText] = useState("");
   const items = values || [];
 
@@ -19,9 +19,10 @@ export default function ChipsInput({ name, values, onChange, label, list, max = 
         </span>
       ))}
       <input
+        id={id}
         aria-label={label}
-        list={list}
         value={text}
+        {...aria}
         onChange={(e) => setText(e.target.value)}
         onBlur={add}
         onKeyDown={(e) => {
@@ -32,3 +33,4 @@ export default function ChipsInput({ name, values, onChange, label, list, max = 
     </div>
   );
 }
+ChipsInput.isFieldControl = true;

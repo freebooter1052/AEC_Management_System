@@ -7,16 +7,21 @@ from rest_framework.views import APIView
 from .db import get_db
 
 
-def frontend_app(request, **kwargs):
+def frontend_app(request, status=200, **kwargs):
     """Serve the built React app (frontend/dist/index.html); React Router renders the page for the URL."""
     try:
         html = (settings.FRONTEND_DIR / "dist" / "index.html").read_text(encoding="utf-8")
     except FileNotFoundError:
         return HttpResponse("The application is temporarily unavailable.",
                             status=503, content_type="text/plain")
-    response = HttpResponse(html)
+    response = HttpResponse(html, status=status)
     response["Cache-Control"] = "no-cache"  # always revalidate, so a new build is picked up straight away
     return response
+
+
+def frontend_not_found(request):
+    """Unknown page URLs still load the app (which shows "page not found"), but answer 404."""
+    return frontend_app(request, status=404)
 
 
 class HealthView(APIView):

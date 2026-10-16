@@ -8,6 +8,7 @@ import Dashboard from "./pages/Dashboard";
 import Documents from "./pages/Documents";
 import ForgotPassword from "./pages/ForgotPassword";
 import Login from "./pages/Login";
+import { AccessDenied, NotFound } from "./pages/NotFound";
 import Profile from "./pages/Profile";
 import Register from "./pages/Register";
 import Students from "./pages/Students";
@@ -16,14 +17,15 @@ import Universities from "./pages/Universities";
 const STAFF = ["counsellor", "admin"];
 
 /**
- * Signed-in pages: redirect to login when signed out and to the dashboard when the role is not allowed,
- * before the page mounts or calls the API. The API enforces every rule again; this only decides what to render.
+ * Signed-in pages: signed-out visitors go to sign in (and come back afterwards); a signed-in user whose role
+ * may not use the page sees an explanation instead of the page. Both happen before the page mounts or calls
+ * the API, and the API enforces every rule again - this only decides what to render.
  */
 function RequireAuth({ roles, children }) {
   const { user } = useAuth();
   const location = useLocation();
   if (!user) return <Navigate to={"/login/?next=" + encodeURIComponent(location.pathname + location.search)} replace />;
-  if (roles && !roles.includes(user.role)) return <Navigate to="/dashboard/" replace />;
+  if (roles && !roles.includes(user.role)) return <AccessDenied />;
   return children;
 }
 
@@ -48,7 +50,7 @@ export default function App() {
       <Route path="/applications/:applicationId/" element={auth(<Application />)} />
       <Route path="/documents/" element={auth(<Documents />)} />
       <Route path="/counselling/" element={auth(<Counselling />)} />
-      <Route path="*" element={<Navigate to="/dashboard/" replace />} />
+      <Route path="*" element={<NotFound />} />
     </Routes>
   );
 }

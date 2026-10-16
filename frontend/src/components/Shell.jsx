@@ -1,5 +1,7 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link, useLocation } from "react-router-dom";
+import ChangePasswordDrawer from "./ChangePassword";
+import { lockScroll } from "./Dialog";
 import { useAuth } from "./auth";
 import { initials } from "../lib/format";
 
@@ -24,10 +26,78 @@ const NAV = {
     ["applications", "Applications", "/applications/"], ["documents", "Documents", "/documents/"], ["counselling", "Counselling", "/counselling/"],
     ["universities", "Universities", "/universities/"]],
 };
+const PROFILE_LINK = { student: "/profile/", counsellor: "/counsellors/" };
 export const ROLE_LABEL = { student: "Student", counsellor: "Counsellor", admin: "Administrator" };
 
 export function usePageTitle(title) {
   useEffect(() => { document.title = `${title} · AEC Admissions`; }, [title]);
+}
+
+const isNarrow = () => window.matchMedia("(max-width: 900px)").matches;
+
+/** Account menu (WAI-ARIA menu button): arrow keys, Home/End, Escape returns focus to the avatar. */
+function AccountMenu({ user, onChangePassword, onSignOut }) {
+  const [open, setOpen] = useState(false);
+  const rootRef = useRef(null);
+  const buttonRef = useRef(null);
+  const menuRef = useRef(null);
+  const focusOnOpen = useRef("first");
+  const name = user.full_name || user.email;
+  const items = () => [...(menuRef.current?.querySelectorAll('[role="menuitem"]') || [])];
+
+  useEffect(() => {
+    if (!open) return undefined;
+    const list = items();
+    (focusOnOpen.current === "last" ? list[list.length - 1] : list[0])?.focus();
+    const onDown = (e) => { if (!rootRef.current?.contains(e.target)) setOpen(false); };
+    document.addEventListener("mousedown", onDown);
+    return () => document.removeEventListener("mousedown", onDown);
+  }, [open]);
+
+  const openWith = (where) => { focusOnOpen.current = where; setOpen(true); };
+  const close = (refocus = true) => { setOpen(false); if (refocus) buttonRef.current?.focus(); };
+
+  function onButtonKey(e) {
+    if (e.key === "ArrowDown" || e.key === "Enter" || e.key === " ") { e.preventDefault(); openWith("first"); }
+    else if (e.key === "ArrowUp") { e.preventDefault(); openWith("last"); }
+  }
+  function onMenuKey(e) {
+    const list = items();
+    const i = list.indexOf(document.activeElement);
+    const go = (n) => { e.preventDefault(); list[(n + list.length) % list.length]?.focus(); };
+    if (e.key === "ArrowDown") go(i + 1);
+    else if (e.key === "ArrowUp") go(i - 1);
+    else if (e.key === "Home") go(0);
+    else if (e.key === "End") go(list.length - 1);
+    else if (e.key === "Escape") { e.preventDefault(); close(); }
+    else if (e.key === "Tab") close(false);
+  }
+  const pick = (fn) => () => { setOpen(false); fn(); };
+
+  return (
+    <div className="account" ref={rootRef}>
+      <button ref={buttonRef} type="button" className="account-btn" id="account-button" aria-haspopup="menu" aria-expanded={open} aria-controls="account-menu"
+        aria-label={`Account menu for ${name}`} onClick={() => (open ? close(false) : openWith("first"))} onKeyDown={onButtonKey}>
+        <span className="avatar" aria-hidden="true">{initials(name)}</span>
+        <span className="role-badge">{ROLE_LABEL[user.role] || user.role}</span>
+      </button>
+      {open && (
+        <div className="account-menu" id="account-menu" role="menu" aria-labelledby="account-button" ref={menuRef} onKeyDown={onMenuKey}>
+          <div className="account-head" role="presentation">
+            <span className="avatar avatar-lg" aria-hidden="true">{initials(name)}</span>
+            <div>
+              <div className="account-name">{name}</div>
+              <div className="small muted account-email">{user.email}</div>
+              <span className="role-badge">{ROLE_LABEL[user.role] || user.role}</span>
+            </div>
+          </div>
+          {PROFILE_LINK[user.role] && <Link role="menuitem" tabIndex={-1} className="account-item" to={PROFILE_LINK[user.role]} onClick={() => setOpen(false)}>My profile</Link>}
+          <button type="button" role="menuitem" tabIndex={-1} className="account-item" onClick={pick(onChangePassword)}>Change password</button>
+          <button type="button" role="menuitem" tabIndex={-1} className="account-item account-out" onClick={pick(onSignOut)}>Sign out</button>
+        </div>
+      )}
+    </div>
+  );
 }
 
 /** Signed-in page frame (sidebar + top bar). Only rendered inside RequireAuth, so `user` is always set. */
@@ -35,15 +105,27 @@ export default function AppShell({ title, crumb, children }) {
   const { user, signOut } = useAuth();
   const location = useLocation();
   const [menuOpen, setMenuOpen] = useState(false);
+  const [changingPassword, setChangingPassword] = useState(false);
+  const toggleRef = useRef(null);
   usePageTitle(title);
-  useEffect(() => setMenuOpen(false), [location.pathname]);
+  useEffect(() => { setMenuOpen(false); }, [location.pathname]);
+
+  // Mobile navigation is an overlay: lock the page behind it, close on Escape and return focus to "Menu".
+  useEffect(() => {
+    if (!menuOpen || !isNarrow()) return undefined;
+    const unlock = lockScroll();
+    document.querySelector(".sidebar .nav a")?.focus();
+    const onKey = (e) => { if (e.key === "Escape") { setMenuOpen(false); toggleRef.current?.focus(); } };
+    document.addEventListener("keydown", onKey);
+    return () => { unlock(); document.removeEventListener("keydown", onKey); };
+  }, [menuOpen]);
 
   const here = location.pathname;
-  const name = user.full_name || user.email;
   return (
     <div className="shell">
-      <aside className={"sidebar" + (menuOpen ? " open" : "")} aria-label="Main navigation">
-        <Link className="brand" to="/dashboard/"><span className="brand-mark">AE</span>AEC Admissions</Link>
+      <a className="skip-link" href="#main">Skip to content</a>
+      <aside id="sidebar" className={"sidebar" + (menuOpen ? " open" : "")} aria-label="Main navigation">
+        <Link className="brand" to="/dashboard/"><span className="brand-mark" aria-hidden="true">AE</span>AEC Admissions</Link>
         <nav className="nav">
           {(NAV[user.role] || []).map(([icon, label, href]) => {
             const active = here === href || (href !== "/dashboard/" && here.startsWith(href));
@@ -56,22 +138,17 @@ export default function AppShell({ title, crumb, children }) {
           })}
         </nav>
       </aside>
-      <div>
+      {menuOpen && <div className="nav-backdrop" aria-hidden="true" onClick={() => { setMenuOpen(false); toggleRef.current?.focus(); }} />}
+      <div className="shell-main">
         <header className="topbar">
-          <button className="btn btn-outline btn-sm menu-toggle" aria-label="Toggle navigation" onClick={() => setMenuOpen((o) => !o)}>Menu</button>
+          <button ref={toggleRef} type="button" className="btn btn-outline btn-sm menu-toggle" aria-controls="sidebar" aria-expanded={menuOpen}
+            onClick={() => setMenuOpen((o) => !o)}>{menuOpen ? "Close menu" : "Menu"}</button>
           <div className="muted small" id="crumb">{crumb}</div>
-          <div className="who">
-            <div className="meta" style={{ textAlign: "right" }}>
-              <div style={{ fontWeight: 600 }}>{name}</div>
-              <div className="small muted">{user.email}</div>
-            </div>
-            <span className="role-badge">{ROLE_LABEL[user.role] || user.role}</span>
-            <div className="avatar" aria-hidden="true">{initials(name)}</div>
-            <button className="btn btn-outline btn-sm" onClick={signOut}>Sign out</button>
-          </div>
+          <AccountMenu user={user} onChangePassword={() => setChangingPassword(true)} onSignOut={signOut} />
         </header>
-        <main className="content">{children}</main>
+        <main className="content" id="main" tabIndex={-1}>{children}</main>
       </div>
+      {changingPassword && <ChangePasswordDrawer onClose={() => { setChangingPassword(false); setTimeout(() => document.getElementById("account-button")?.focus(), 0); }} />}
     </div>
   );
 }

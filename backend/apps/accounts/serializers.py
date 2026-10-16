@@ -30,6 +30,17 @@ class RegisterSerializer(serializers.Serializer):
     phone = serializers.RegexField(r"^\d{6,15}$", required=False, allow_blank=True)
     citizenship = serializers.CharField(max_length=60, required=False, allow_blank=True)
     intended_level = serializers.CharField(max_length=60, required=False, allow_blank=True)
+    # The applicant confirms they have read how their profile and uploaded documents are used.
+    privacy_acknowledged = serializers.BooleanField(required=False, default=False)
+
+    def validate_citizenship(self, value):
+        from apps.students.serializers import world_country  # avoid a circular import at module load
+        return world_country(value)
+
+    def validate_privacy_acknowledged(self, value):
+        if value is not True:
+            raise serializers.ValidationError("Confirm that you have read how your information is used.")
+        return value
 
 
 class ChangePasswordSerializer(serializers.Serializer):

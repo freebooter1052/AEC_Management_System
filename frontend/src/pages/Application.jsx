@@ -3,14 +3,16 @@ import { useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import AppShell, { ROLE_LABEL } from "../components/Shell";
 import Drawer from "../components/Drawer";
+import { ConfirmDialog } from "../components/Dialog";
 import { DocRow, useDocActions } from "../components/Documents";
 import { useAuth } from "../components/auth";
 import { useToast } from "../components/Toast";
-import { AppStatusBadge, DeadlineBadge, Field, Loading } from "../components/ui";
+import { AppStatusBadge, DeadlineBadge, ErrorAlert, Field, Loading, appStatusLabel, countdownText, docStatusLabel as docLabel, recordError } from "../components/ui";
 import { api } from "../lib/api";
 import { formatDate, formatDateTime } from "../lib/format";
-import { fieldErrors } from "../lib/form";
+import { fieldErrors, saveErrorMessage } from "../lib/form";
 import { useLoad } from "../lib/useLoad";
+import { useSubmit } from "../lib/useSubmit";
 
 const MAIN_PATH = ["Planned", "Shortlisted", "Documents Pending", "Submitted", "Under Review", "Offer Received", "Completed"];
 const ACTION_LABEL = {
@@ -20,15 +22,8 @@ const ACTION_LABEL = {
 };
 const BACKWARD = { Shortlisted: "Planned", "Documents Pending": "Shortlisted" }; // corrections, from -> to
 const DANGER = ["Withdrawn", "Rejected"];
-const COUNTDOWN_TEXT = {
-  overdue: (n) => `The deadline passed ${Math.abs(n)} day${Math.abs(n) === 1 ? "" : "s"} ago.`,
-  due_soon: (n) => (n === 0 ? "Due today." : `Due in ${n} day${n === 1 ? "" : "s"}.`),
-  open: (n) => `${n} days to go.`,
-  submitted: () => "Submitted — the deadline has been met.",
-  closed: () => "This application is closed.",
-};
 
-const actionLabel = (app, target) => (BACKWARD[app.status] === target ? `Back to ${target}` : ACTION_LABEL[target] || target);
+const actionLabel = (app, target) => (BACKWARD[app.status] === target ? `Back to ${appStatusLabel(target)}` : ACTION_LABEL[target] || appStatusLabel(target));
 
 function Stepper({ app }) {
   // Show the main path; Rejected replaces "Offer Received", Withdrawn ends the path where it happened.
@@ -44,7 +39,7 @@ function Stepper({ app }) {
     <ol className="stepper">
       {steps.map((s, i) => {
         const cls = i < at ? "done" : i === at ? (["Rejected", "Withdrawn"].includes(s) ? "bad" : status === "Completed" ? "done" : "current") : "";
-        return <li key={s} className={cls} aria-current={i === at ? "step" : undefined}>{s}</li>;
+        return <li key={s} className={cls} aria-current={i === at ? "step" : undefined}>{appStatusLabel(s)}</li>;
       })}
     </ol>
   );
@@ -54,23 +49,24 @@ function MoveDrawer({ app, status, onClose, onDone, onConflict }) {
   const toast = useToast();
   const [remarks, setRemarks] = useState("");
   const [errors, setErrors] = useState({});
+  const [busy, run] = useSubmit();
 
-  async function save() {
+  const save = () => run(async () => {
     try {
       const updated = await api(`/applications/${encodeURIComponent(app.id)}/status/`, { method: "POST", body: { status, remarks: remarks.trim(), rev: app.rev } });
-      toast(`Status changed to ${status}`);
+      toast(`Status changed to ${appStatusLabel(status)}`);
       onDone(updated);
     } catch (err) {
-      if (err.status === 409) { toast("This application changed meanwhile — reloaded the latest version.", "error"); onConflict(); return; }
+      if (err.status === 409) { toast("This application changed meanwhile, so the latest version has been loaded. Check it and try again.", "warning"); onConflict(); return; }
       if (err.status === 400) setErrors(fieldErrors(err.data));
-      toast(err.message, "error");
+      toast(saveErrorMessage(err), "error");
     }
-  }
+  });
 
   return (
-    <Drawer title={actionLabel(app, status)} onClose={onClose} footer={<>
-      <button className="btn btn-outline" onClick={onClose}>Cancel</button>
-      <button className={`btn ${DANGER.includes(status) ? "btn-danger" : "btn-primary"}`} onClick={save}>Confirm</button>
+    <Drawer title={actionLabel(app, status)} onClose={onClose} busy={busy} footer={<>
+      <button type="button" className="btn btn-outline" onClick={onClose}>Cancel</button>
+      <button type="button" className={`btn ${DANGER.includes(status) ? "btn-danger-solid" : "btn-primary"}`} onClick={save} disabled={busy}>{busy ? "Saving…" : "Confirm"}</button>
     </>}>
       <p>Move <b>{app.snapshot.course_title}</b> from <AppStatusBadge status={app.status} /> to <AppStatusBadge status={status} />.</p>
       <form noValidate onSubmit={(e) => { e.preventDefault(); save(); }}>
@@ -86,9 +82,10 @@ function EditDrawer({ app, onClose, onDone }) {
   const toast = useToast();
   const [v, setV] = useState({ deadline: app.deadline || "", decision_expected: app.decision_expected || "", tier: app.tier || "", notes: app.notes || "" });
   const [errors, setErrors] = useState({});
+  const [busy, run] = useSubmit();
   const bind = (k) => ({ value: v[k], onChange: (e) => setV({ ...v, [k]: e.target.value }) });
 
-  async function save() {
+  const save = () => run(async () => {
     const body = { tier: v.tier, notes: v.notes, rev: app.rev, decision_expected: v.decision_expected || null };
     if (v.deadline) body.deadline = v.deadline;
     try {
@@ -97,14 +94,14 @@ function EditDrawer({ app, onClose, onDone }) {
       onDone(updated);
     } catch (err) {
       if (err.status === 400) setErrors(fieldErrors(err.data));
-      toast(err.status === 409 ? "This application changed meanwhile. Reload and try again." : err.message, "error");
+      toast(err.status === 409 ? "This application changed meanwhile. Close this panel, reload the page and try again." : saveErrorMessage(err), "error");
     }
-  }
+  });
 
   return (
-    <Drawer title="Edit application details" onClose={onClose} footer={<>
-      <button className="btn btn-outline" onClick={onClose}>Cancel</button>
-      <button className="btn btn-primary" onClick={save}>Save</button>
+    <Drawer title="Edit application details" onClose={onClose} busy={busy} footer={<>
+      <button type="button" className="btn btn-outline" onClick={onClose}>Cancel</button>
+      <button type="button" className="btn btn-primary" onClick={save} disabled={busy}>{busy ? "Saving…" : "Save"}</button>
     </>}>
       <form noValidate onSubmit={(e) => { e.preventDefault(); save(); }}>
         <div className="grid grid-2">
@@ -134,30 +131,33 @@ function Detail({ app, user, setApp, reload }) {
   const forward = transitions.filter((s) => !isBack(s) && s !== "Withdrawn");
   const secondary = transitions.filter((s) => isBack(s) || s === "Withdrawn");
   const blockers = app.submission_blockers || [];
-  const countdown = info.date && COUNTDOWN_TEXT[info.state] ? COUNTDOWN_TEXT[info.state](info.days_left) : "";
+  const countdown = info.date ? countdownText(info, { long: true }) : "No deadline has been set.";
   const done = (updated) => { setDrawer(null); setApp(updated); };
+  const [deleting, setDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState("");
+  const [removing, runRemove] = useSubmit();
 
-  async function remove() {
-    if (!window.confirm("Delete this planned application? This cannot be undone.")) return;
+  const remove = () => runRemove(async () => {
+    setDeleteError("");
     try {
       await api(`/applications/${encodeURIComponent(app.id)}/`, { method: "DELETE" });
       toast("Application deleted");
       navigate("/applications/");
-    } catch (err) { toast(err.message, "error"); }
-  }
+    } catch (err) { setDeleteError(err.message); }
+  });
 
   return (
     <>
       <div className="page-head">
         <div>
           <h1>{snap.course_title || "Application"}</h1>
-          <p className="muted">{snap.university_name} · {snap.country}{snap.world_rank ? ` · World rank #${snap.world_rank}` : ""}{snap.cluster ? ` · ${snap.cluster}` : ""}</p>
+          <p className="muted">{snap.university_name} · {snap.country}{snap.world_rank ? ` · World ranking ${snap.world_rank}` : ""}{snap.cluster ? ` · ${snap.cluster}` : ""}</p>
         </div>
         <div className="toolbar">
           <AppStatusBadge status={app.status} />
           {app.tier && <span className="badge badge-brand">{app.tier}</span>}
-          {isStaff && <button className="btn btn-outline btn-sm" onClick={() => setDrawer({ kind: "edit" })}>Edit details</button>}
-          {app.status === "Planned" && <button className="btn btn-danger btn-sm" onClick={remove}>Delete</button>}
+          {isStaff && <button type="button" className="btn btn-outline btn-sm" onClick={() => setDrawer({ kind: "edit" })}>Edit details</button>}
+          {app.status === "Planned" && <button type="button" className="btn btn-danger btn-sm" onClick={() => { setDeleteError(""); setDeleting(true); }}>Delete</button>}
         </div>
       </div>
 
@@ -168,19 +168,19 @@ function Detail({ app, user, setApp, reload }) {
             <div className="card-head"><h3>Next step</h3><AppStatusBadge status={app.status} /></div>
             {blockers.length > 0 && (
               <div className="alert alert-warn">Before submission every document must be Verified. Outstanding:{" "}
-                {blockers.map((b, i) => <span key={b.id || i}>{i ? ", " : ""}<b>{b.title || b.document_type}</b> ({b.status})</span>)}.
+                {blockers.map((b, i) => <span key={b.id || i}>{i ? ", " : ""}<b>{b.title || b.document_type}</b> ({docLabel(b.status)})</span>)}.
               </div>
             )}
             {transitions.length ? (
               <>
                 <div className="toolbar">
-                  {forward.map((s) => <button key={s} className={`btn ${DANGER.includes(s) ? "btn-danger" : "btn-primary"}`} onClick={() => setDrawer({ kind: "move", status: s })}>{actionLabel(app, s)}</button>)}
-                  {secondary.map((s) => <button key={s} className={`btn ${DANGER.includes(s) ? "btn-danger" : "btn-outline"}`} onClick={() => setDrawer({ kind: "move", status: s })}>{actionLabel(app, s)}</button>)}
+                  {forward.map((s) => <button type="button" key={s} className={`btn ${DANGER.includes(s) ? "btn-danger" : "btn-primary"}`} onClick={() => setDrawer({ kind: "move", status: s })}>{actionLabel(app, s)}</button>)}
+                  {secondary.map((s) => <button type="button" key={s} className={`btn ${DANGER.includes(s) ? "btn-danger" : "btn-outline"}`} onClick={() => setDrawer({ kind: "move", status: s })}>{actionLabel(app, s)}</button>)}
                 </div>
                 {!isStaff && <p className="small muted" style={{ margin: ".8rem 0 0" }}>Your counsellor moves the application through each stage.</p>}
               </>
             ) : (
-              <p className="muted" style={{ margin: 0 }}>{app.is_terminal ? `This application is ${app.status.toLowerCase()}; no further changes.` : "Your counsellor will move this application to the next stage."}</p>
+              <p className="muted" style={{ margin: 0 }}>{app.is_terminal ? `This application is ${appStatusLabel(app.status).toLowerCase()}; no further changes.` : "Your counsellor will move this application to the next stage."}</p>
             )}
           </div>
           <div className="card">
@@ -197,7 +197,7 @@ function Detail({ app, user, setApp, reload }) {
               {app.history.slice().reverse().map((h, i) => (
                 <li key={h.id || i}>
                   <div className="when">{formatDateTime(h.timestamp)}</div>
-                  <div className="what">{h.old_status ? `${h.old_status} → ` : ""}{h.new_status}</div>
+                  <div className="what">{h.old_status ? `${appStatusLabel(h.old_status)} → ` : ""}{appStatusLabel(h.new_status)}</div>
                   <div className="note">{h.changed_by_name || "System"}{h.changed_by_role ? ` (${ROLE_LABEL[h.changed_by_role] || h.changed_by_role})` : ""}{h.remarks ? ` — ${h.remarks}` : ""}</div>
                 </li>
               ))}
@@ -235,6 +235,13 @@ function Detail({ app, user, setApp, reload }) {
       {drawers}
       {drawer?.kind === "move" && <MoveDrawer app={app} status={drawer.status} onClose={() => setDrawer(null)} onDone={done} onConflict={() => { setDrawer(null); reload(); }} />}
       {drawer?.kind === "edit" && <EditDrawer app={app} onClose={() => setDrawer(null)} onDone={done} />}
+      {deleting && (
+        <ConfirmDialog title="Delete this application?" danger confirmLabel="Delete application" busyLabel="Deleting…" busy={removing}
+          error={deleteError} onConfirm={remove} onCancel={() => setDeleting(false)}>
+          <p><b>{snap.course_title}</b> at {snap.university_name} ({snap.intake_name}) for {app.student_name} will be removed, together with its status history and any document requirements that have no file yet.
+            This cannot be undone.</p>
+        </ConfirmDialog>
+      )}
     </>
   );
 }
@@ -251,7 +258,8 @@ export default function Application() {
       {error ? (
         <>
           <div className="page-head"><div><h1>Application</h1></div></div>
-          <div className="alert alert-error">{error.status === 403 ? "You do not have access to this application." : error.message}</div>
+          <ErrorAlert error={error} onRetry={error.status === 403 || error.status === 404 ? undefined : reload}>{recordError(error, "application")}</ErrorAlert>
+          <p><Link to="/applications/">Back to applications</Link></p>
         </>
       ) : !app ? (
         <><div className="page-head"><div><h1>Application</h1></div></div><Loading text="Loading application…" /></>

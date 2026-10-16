@@ -6,6 +6,8 @@ import { useAuth } from "../components/auth";
 import { Field } from "../components/ui";
 import { api } from "../lib/api";
 import { fieldErrors } from "../lib/form";
+import { passwordProblem } from "../lib/passwords";
+import { useSubmit } from "../lib/useSubmit";
 
 const RESEND_SECONDS = 60;
 
@@ -19,7 +21,7 @@ export default function ForgotPassword() {
   const [confirm, setConfirm] = useState("");
   const [errors, setErrors] = useState({});
   const [notice, setNotice] = useState(null);
-  const [busy, setBusy] = useState(false);
+  const [busy, run] = useSubmit();
   const [wait, setWait] = useState(0);
 
   useEffect(() => {
@@ -31,55 +33,58 @@ export default function ForgotPassword() {
   if (user) return <Navigate to="/dashboard/" replace />;
 
   async function call(path, body) {
-    setBusy(true);
     setErrors({});
     try {
       return await api(path, { method: "POST", body });
     } catch (err) {
       setErrors(err.status === 400 ? fieldErrors(err.data) : { form: err.message });
       return null;
-    } finally {
-      setBusy(false);
     }
   }
 
-  async function sendCode(e) {
+  const sendCode = (e) => {
     e?.preventDefault();
-    if (!email.trim()) { setErrors({ email: "Enter the email address of your account." }); return; }
-    const res = await call("/auth/forgot-password/", { email: email.trim() });
-    if (!res) return;
-    setWait(RESEND_SECONDS);
-    setCode("");
-    setNotice(`We sent a 6-digit code to ${email.trim()} if an account exists for it. It is valid for 10 minutes.`);
-    setStep("code");
-  }
+    return run(async () => {
+      if (!email.trim()) { setErrors({ email: "Enter the email address of your account." }); return; }
+      const res = await call("/auth/forgot-password/", { email: email.trim() });
+      if (!res) return;
+      setWait(RESEND_SECONDS);
+      setCode("");
+      setNotice(`We sent a 6-digit code to ${email.trim()} if an account exists for it. It is valid for 10 minutes.`);
+      setStep("code");
+    });
+  };
 
-  async function verifyCode(e) {
+  const verifyCode = (e) => {
     e.preventDefault();
-    if (code.length !== 6) { setErrors({ code: "Enter the 6-digit code from the email." }); return; }
-    const res = await call("/auth/verify-reset-code/", { email: email.trim(), code });
-    if (!res) return;
-    setNotice(null);
-    setStep("password");
-  }
+    return run(async () => {
+      if (code.length !== 6) { setErrors({ code: "Enter the 6-digit code from the email." }); return; }
+      const res = await call("/auth/verify-reset-code/", { email: email.trim(), code });
+      if (!res) return;
+      setNotice(null);
+      setStep("password");
+    });
+  };
 
-  async function resetPassword(e) {
+  const resetPassword = (e) => {
     e.preventDefault();
-    if (password !== confirm) { setErrors({ confirm: "The two passwords do not match." }); return; }
-    setBusy(true);
-    setErrors({});
-    try {
-      await api("/auth/reset-password/", { method: "POST", body: { email: email.trim(), code, new_password: password } });
-      navigate("/login/?reset=1", { replace: true });
-    } catch (err) {
-      const fields = err.status === 400 ? fieldErrors(err.data) : { form: err.message };
-      if (fields.code) { // the code stopped being valid meanwhile: go back to ask for a new one
-        setStep("code");
-        setErrors({ code: fields.code });
-      } else setErrors(fields);
-      setBusy(false);
-    }
-  }
+    return run(async () => {
+      const problem = passwordProblem(password);
+      if (problem) { setErrors({ new_password: problem }); return; }
+      if (password !== confirm) { setErrors({ confirm: "The two passwords do not match." }); return; }
+      setErrors({});
+      try {
+        await api("/auth/reset-password/", { method: "POST", body: { email: email.trim(), code, new_password: password } });
+        navigate("/login/?reset=1", { replace: true });
+      } catch (err) {
+        const fields = err.status === 400 ? fieldErrors(err.data) : { form: err.message };
+        if (fields.code) { // the code stopped being valid meanwhile: go back to ask for a new one
+          setStep("code");
+          setErrors({ code: fields.code });
+        } else setErrors(fields);
+      }
+    });
+  };
 
   return (
     <AuthLayout title="Reset password">
