@@ -54,6 +54,8 @@ INSTALLED_APPS = [
     "apps.applications",
     "apps.documents",
     "apps.counselling",
+    "apps.recommendations",
+    "apps.notifications",
 ]
 
 MIDDLEWARE = [
@@ -132,6 +134,9 @@ REST_FRAMEWORK = {
 
 DEFAULT_PAGE_SIZE = 20
 MAX_PAGE_SIZE = 100
+
+# Recommendation engine factor weights (apps/recommendations/engine.py); any subset overrides the defaults.
+RECOMMENDATION_WEIGHTS = {"country": 30, "course": 30, "academic": 20, "intake": 10, "budget": 10}
 
 # Not needed for the React app: Django serves its build, and the Vite dev server
 # proxies /api, so both run on one origin. Only list origins hosted elsewhere.

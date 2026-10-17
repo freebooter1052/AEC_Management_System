@@ -82,9 +82,9 @@ The system implements strict **Role-Based Access Control (RBAC)** across three p
 - **📝 Application Management**: Application lifecycle tracking across statuses:
   `Planned` ➔ `Shortlisted` ➔ `Documents Pending` ➔ `Submitted` ➔ `Under Review` ➔ `Offer Received` / `Rejected` / `Withdrawn` / `Completed`
 - **📁 Document Management**: Manage metadata and file uploads for Transcripts, Degree Certificates, Passports, SOPs, LORs, and Test Scores with status flags (`Required`, `Uploaded`, `Under Review`, `Verified`, `Rejected`, `Expired`).
-- **💡 Recommendation & Matching Engine**: Rule-based matching that scores university programs against student budget, target country, academic GPA, and preferred intake.
-- **📊 Dashboards & Reporting**: Tailored analytics views for students, counsellors, and administrators.
-- **🔔 Notifications & Reminders**: Real-time alerts for application deadlines, missing documents, and follow-ups.
+- **💡 Recommendation & Matching Engine**: Deterministic rule-based scoring of the catalogue on country, course area, academic fit, intake and budget, with hard eligibility rules (level, entry grade, English, open intake), persisted reasons and missing-data reporting; counsellors accept, reject, re-tier or add courses.
+- **📊 Dashboards & Reporting**: Role-specific dashboards with recommendations, review queues, follow-ups, filters by counsellor/country/intake and reports by country, university and intake.
+- **🔔 Notifications & Reminders**: In-app notifications for status changes, requested/rejected documents, deadlines and follow-ups, with a bell, an inbox and idempotent scheduled reminders.
 
 ---
 
@@ -202,7 +202,9 @@ AEC_Management_System/
 │   │   ├── dashboard/           Role-specific dashboard summaries
 │   │   ├── applications/        Applications, status workflow & history, intakes and deadlines
 │   │   ├── documents/           Document checklist, uploads (CouchDB attachments), verification
-│   │   └── counselling/         Counselling sessions, notes, follow-ups, calendar
+│   │   ├── counselling/         Counselling sessions, notes, follow-ups, calendar
+│   │   ├── recommendations/     Rule-based recommendation engine, refresh and counsellor review
+│   │   └── notifications/       In-app notifications, business-event hooks, scheduled reminders
 │   └── tests/                   API tests (run against an in-memory CouchDB stand-in)
 ├── frontend/                    React web client (Vite), built into frontend/dist and served by Django
 │   ├── package.json             npm scripts: dev, build
@@ -264,10 +266,13 @@ After initial setup, simply run from the repository root in **PowerShell as Admi
 
 4. **Initialise CouchDB and Data** (there are no SQL migrations; CouchDB is the only database)
    ```bash
-   python manage.py init_couchdb                         # database + Mango indexes (safe to re-run)
+   python manage.py init_couchdb                         # database, Mango indexes and map/reduce views (safe to re-run)
    python manage.py load_universities                    # loads ../output/universities.json
    python manage.py create_admin --email you@example.com # first administrator (prompts for password)
+   python manage.py check_indexes                        # verify indexes/views (builds the views; re-run if it times out)
    ```
+   CouchDB builds the views on first use. On a large database run `check_indexes` once after
+   `init_couchdb` so the first page load does not wait for the build.
 
 5. **Start the Application**
 
@@ -301,12 +306,49 @@ After initial setup, simply run from the repository root in **PowerShell as Admi
 
 7. **Run the Tests** (no CouchDB needed)
    ```bash
-   python manage.py test tests
+   cd backend && python manage.py test tests        # 136 API, engine and data-layer tests (in-memory CouchDB)
+   cd frontend && npm test                          # 28 unit tests for the frontend helpers
    ```
+
+8. **Reminders** (deadlines, outstanding documents, follow-ups)
+
+   In-app reminders are created by an idempotent command; run it as often as you like. Schedule it daily, e.g. on Windows:
+   ```powershell
+   schtasks /Create /TN "AEC reminders" /SC DAILY /ST 07:00 /TR "<repo>\backend\myenv\Scripts\python.exe <repo>\backend\manage.py send_reminders"
+   ```
+   Without a schedule, students and counsellors still get their own reminders when they open the dashboard or
+   notifications (at most every 15 minutes per user). `send_reminders --date YYYY-MM-DD` simulates another day.
+
+9. **Benchmarks** (optional; never touches `counselling_db`)
+   ```powershell
+   $env:COUCHDB_NAME = "aec_bench_1000"
+   python manage.py init_couchdb
+   python manage.py bench_seed --students 1000 --copy-catalogue-from counselling_db   # refuses any DB not named aec_bench*
+   python manage.py check_indexes                                                    # builds and verifies the views
+   python manage.py runserver 127.0.0.1:8001                                         # in a second terminal, same env
+   python manage.py bench_run --base-url http://127.0.0.1:8001 --requests 100 --concurrency 1 8
+   ```
+   Results print as a table and are saved under `output/benchmarks/` (git-ignored). Method and results:
+   [`docs/SPRINT3_TEST_REPORT.md`](docs/SPRINT3_TEST_REPORT.md).
+
+### Troubleshooting
+| Symptom | Cause and fix |
+|---|---|
+| Pages show "The database is temporarily unavailable" | CouchDB is not running: `Start-Service "Apache CouchDB"` (Administrator) |
+| The first dashboard after an update is slow or returns 503 | CouchDB is building the map/reduce views: run `python manage.py check_indexes` and wait for it to finish |
+| `check_indexes` reports a full scan | The indexes are missing: run `python manage.py init_couchdb` |
+| No reminders appear | Run `python manage.py send_reminders`, or schedule it (step 8) |
+| Recommendations say "Eligibility to confirm" and budget "Not assessed" | The imported catalogue has no entry requirements or tuition: an administrator can record them per course (Universities → a university → Edit) |
 
 ---
 
-## 📖 References & Documentation
+## 📖 Project Documentation
+- [`docs/SPRINT1_FOUNDATION.md`](docs/SPRINT1_FOUNDATION.md), [`docs/SPRINT2_WORKFLOW.md`](docs/SPRINT2_WORKFLOW.md), [`docs/SPRINT3_IMPLEMENTATION_REPORT.md`](docs/SPRINT3_IMPLEMENTATION_REPORT.md): what each sprint delivered and why
+- [`docs/SPRINT3_TEST_REPORT.md`](docs/SPRINT3_TEST_REPORT.md): test results and benchmarks
+- [`docs/API_DOCUMENTATION.md`](docs/API_DOCUMENTATION.md): every endpoint
+- [`docs/DATA_MODEL.md`](docs/DATA_MODEL.md), [`docs/DATABASE_AND_SCALABILITY.md`](docs/DATABASE_AND_SCALABILITY.md): documents, indexes, views, consistency
+
+## 📖 References
 - IEEE Recommended Practice for Software Requirements Specifications (IEEE 830-1998)
 - [Django Documentation](https://docs.djangoproject.com/)
 - [Django REST Framework Documentation](https://www.django-rest-framework.org/)

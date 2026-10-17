@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project
 
-Abroad Education Counselling & Student Application Management System, an academic project built against an SRS (v1.0). Stack: **Django 6 + Django REST Framework + Apache CouchDB** (the only database). It has three roles: `student`, `counsellor` and `admin`. Sprint 1 (foundation) is done: auth/RBAC, student and counsellor CRUD, counsellor assignment, dashboards and a university search skeleton. Sprint 2 (workflow) is done: applications with status transitions, history and deadlines, intakes, documents with upload and verification, and counselling sessions with follow-ups and a calendar. Recommendations and notifications are the next sprints. `docs/SPRINT1_FOUNDATION.md` and `docs/SPRINT2_WORKFLOW.md` record what exists and why.
+Abroad Education Counselling & Student Application Management System, an academic project built against an SRS (v1.0). Stack: **Django 6 + Django REST Framework + Apache CouchDB** (the only database). It has three roles: `student`, `counsellor` and `admin`. Sprint 1 (foundation) is done: auth/RBAC, student and counsellor CRUD, counsellor assignment, dashboards and a university search skeleton. Sprint 2 (workflow) is done: applications with status transitions, history and deadlines, intakes, documents with upload and verification, and counselling sessions with follow-ups and a calendar. Sprint 3 is done: the rule-based recommendation engine, in-app notifications and reminders, full dashboards for every role, admin course maintenance, and the view-based data layer that keeps them fast at 10,000 students. `docs/SPRINT1_FOUNDATION.md`, `docs/SPRINT2_WORKFLOW.md` and `docs/SPRINT3_IMPLEMENTATION_REPORT.md` record what exists and why; `docs/API_DOCUMENTATION.md`, `docs/DATABASE_AND_SCALABILITY.md` and `docs/SPRINT3_TEST_REPORT.md` cover the API, the data layer and the measurements.
 
 ## Commands
 
@@ -17,12 +17,16 @@ python manage.py test tests.test_students.StudentProfileTests.test_profile_valid
 python manage.py check
 python manage.py runserver                                    # UI + API on http://127.0.0.1:8000/
 
-python manage.py init_couchdb        # create DB + Mango indexes (idempotent)
+python manage.py init_couchdb        # create DB + Mango indexes + _design/aec_stats views (idempotent)
+python manage.py check_indexes       # _explain every query pattern + compare view counts with Mango (builds views)
+python manage.py send_reminders      # create due deadline/document/follow-up reminders (idempotent; --date to simulate)
 python manage.py load_universities   # load ../output/universities.json; skips existing _ids
 python manage.py create_admin --email x@y.z   # admins can only be created this way (existing admins reset their password via Forgot password)
 python manage.py backup_couchdb      # dump every doc to output/backups/<db>-<timestamp>.json
 python manage.py purge_demo_data     # report untagged demo docs; add --apply (auto-backup) to delete them
 python manage.py seed_dataset        # write the SRS sample dataset (source="seed"); --reset / --remove
+python manage.py bench_seed --students N --copy-catalogue-from counselling_db   # only into COUCHDB_NAME=aec_bench*
+python manage.py bench_run --base-url http://127.0.0.1:8001                      # p50/p95 against a running server
 ```
 
 Frontend commands run from `frontend/` (Node 18+):
@@ -42,13 +46,15 @@ CouchDB runs as the Windows service "Apache CouchDB" (3.5, `http://127.0.0.1:598
 
 ## Architecture
 
-**Layout.** `backend/config/` holds settings and the root URL map. `backend/apps/<domain>/` holds the domain apps (`core`, `accounts`, `students`, `counsellors`, `universities`, `dashboard`, and from Sprint 2 `applications` (+ intakes), `documents`, `counselling`). `frontend/` holds the React app (Vite); it contains no Python. Imports are absolute from `backend/`: `from apps.students import services`.
+**Layout.** `backend/config/` holds settings and the root URL map. `backend/apps/<domain>/` holds the domain apps (`core`, `accounts`, `students`, `counsellors`, `universities`, `dashboard`, from Sprint 2 `applications` (+ intakes), `documents`, `counselling`, and from Sprint 3 `recommendations`, `notifications`). `frontend/` holds the React app (Vite); it contains no Python. Imports are absolute from `backend/`: `from apps.students import services`.
 
 **Domain app pattern.** `services.py` owns the document shape, derived fields and business rules. `serializers.py` holds plain DRF `Serializer`s used only for input validation. `views.py` holds `APIView`s that call services and the repository. Put new logic in `services.py`, not in views.
 
 **Data access.** There is no ORM. Everything goes through `apps/core/repository.py` (`get/save/delete/find/find_one/count/paginate`, `new_id`, `now_iso`, `public`, `contains_pattern`), which calls `apps/core/db.get_db()`. That returns a cached `couchdb.Database`; tests swap it with `set_db()`.
 - Every document has a `type` field (`user`, `student`, `counsellor`, `university`, `course`, `audit_log`, …). IDs look like `<type>_<12 hex>`.
-- Queries are Mango `_find`. A sorted query needs a matching index from `init_couchdb.INDEXES`, **and every indexed field must appear in the selector**. That's why list views add `"created_at": {"$gt": None}` and sort on `[{"type": dir}, {"created_at": dir}]`. Add new indexes to `INDEXES`, not ad hoc.
+- Queries are Mango `_find`. A sorted query needs a matching index from `init_couchdb.INDEXES`, **and every indexed field must appear in the selector**. That's why list views add `"created_at": {"$gt": None}` and sort on `[{"type": dir}, {"created_at": dir}]`. For one person's records in date order, put the equality field in the sort too (`[type, counsellor_id, created_at]`, `counselling.services.session_sort`). Add new indexes to `INDEXES`, not ad hoc.
+- **Mango cannot use an index for `$in` and loads every candidate document.** `repository.find` therefore answers `student_id: {"$in": [...]}` from the `by_student` view and `_id: {"$in": [...]}` from `_all_docs` (both ≤ `SCOPED_MAX` keys), then applies the rest of the selector, sort and paging with `apps/core/mango.py`. `repository.count` answers whole-type / status counts from reduce views. Agency-wide aggregates must use the `_design/aec_stats` views (`apps/core/couch_views.py`, `repository.view/view_count/status_counts/get_many`), never "find every document and count in Python".
+- **Every view has a JavaScript map and a Python twin** in `couch_views.py` (the fake runs the twin). Change both together, then run `check_indexes` against a real database: it compares view counts with Mango.
 - `repository.public()` turns `_id/_rev` into `id/rev`. Clients send `rev` back on PATCH. A stale `rev` raises `ResourceConflict`, which the exception handler maps to **409**.
 - CouchDB has no transactions or unique constraints. Writes that touch two documents (user + profile creation, counsellor assignment) are done in sequence with manual cleanup, and email uniqueness is checked in the application (`accounts/users.email_taken`).
 
@@ -65,6 +71,10 @@ CouchDB runs as the Windows service "Apache CouchDB" (3.5, `http://127.0.0.1:598
 - Only admins assign counsellors, through `students/services.assign_counsellor`. It validates that the counsellor is active and has capacity, keeps `student.counsellor_id` (the source of truth) and `counsellor.assigned_student_ids` in sync, and writes an audit entry.
 
 **Student profile.** It has `personal`, `academic` and `preferences` sections. PATCH payloads are deep-merged (`services.apply_update`). After every change, `refresh_derived()` recalculates `profile_completion` (driven by `COMPLETION_FIELDS`) and `onboarding_status` (`registered → in_progress → profile_complete → ready`).
+
+**Recommendations (Sprint 3).** `recommendations/engine.py` is pure scoring (5 weighted factors, 4 hard rules, `ranking_score` = match × confidence so missing data never ranks higher). `services.py` persists under deterministic IDs (`repository.stable_id`), refreshes with `_bulk_docs` and per-document conflict retry, keeps counsellor decisions, and tracks freshness with an input fingerprint. Never invent tuition, levels or requirements: missing catalogue data is reported as `insufficient_data` / `missing_data`. Ineligible courses can't be recommended, added or accepted.
+
+**Notifications (Sprint 3).** Create them only through `notifications.services.notify(event_key=...)`: the ID derives from (event_key, recipient), so a repeat is a no-op, and `notify` never raises. Business events live in `notifications/events.py` and are called *after* the triggering write is saved. Time-based reminders live in `notifications/reminders.py` (`send_reminders`, plus a throttled on-access sweep of the caller's caseload). Event keys must include what makes an event distinct (the window, the deadline). Only the recipient may read or mark a notification. The seeder calls `assign_counsellor(..., notify=False)` so seeding never writes untagged docs.
 
 **Workflow (Sprint 2).**
 - Access to applications, documents and sessions always goes through the owning student: use `students/services.scope_to_students` for list selectors and `get_accessible` / `can_access` for single records. Never trust a `counsellor_id` stored on a workflow doc for access.
@@ -86,11 +96,11 @@ CouchDB runs as the Windows service "Apache CouchDB" (3.5, `http://127.0.0.1:598
 - Destructive actions use `ConfirmDialog` (components/Dialog.jsx), never `window.confirm/prompt`. `Drawer` and `ConfirmDialog` share `useModal` (focus trap, Escape, focus restore, scroll lock).
 - Dates: `formatDate` treats `YYYY-MM-DD` as a calendar date (no UTC shift); status wording for display is in `lib/labels.js` (stored enum values never change).
 - `src/App.jsx`: routes plus `RequireAuth(roles)`, which redirects before a page mounts. Routes are keyed by URL, so each navigation starts the page fresh. Pages update filter query strings with `window.history.replaceState`, which doesn't remount them.
-- `src/components/`: `Shell.jsx` (sidebar, role-based nav, top bar, account menu with Change password), `AuthLayout.jsx`, `Drawer.jsx`, `Dialog.jsx`, `Tabs.jsx`, `Combobox.jsx`, `StudentPicker.jsx`, `CountryPicker.jsx`, `ChangePassword.jsx`, `Toast.jsx` (`useToast(message, "success"|"info"|"warning"|"error")`), `ui.jsx` (`Field`, `Pager`, `Kpi`, `ProgressBar` and the status/deadline badges), `Documents.jsx` (`DocRow`, upload and review drawers via `useDocActions`) and `ChipsInput.jsx`.
+- `src/components/`: `Shell.jsx` (sidebar, role-based nav, top bar with `NotificationBell`, account menu with Change password), `CourseEditor.jsx` (admin course details), `AuthLayout.jsx`, `Drawer.jsx`, `Dialog.jsx`, `Tabs.jsx`, `Combobox.jsx`, `StudentPicker.jsx`, `CountryPicker.jsx`, `ChangePassword.jsx`, `Toast.jsx` (`useToast(message, "success"|"info"|"warning"|"error")`), `ui.jsx` (`Field`, `Pager`, `Kpi`, `ProgressBar` and the status/deadline badges), `Documents.jsx` (`DocRow`, upload and review drawers via `useDocActions`) and `ChipsInput.jsx`.
 - One component per page in `src/pages/`.
 - The design tokens follow the PRD: Space Grotesk, primary `#b45309`, background `#f8f9ff`. Fonts are bundled from `@fontsource-variable/*` (OFL), not loaded from Google. Keep white-on-primary text at 4.5:1 or more (the gradient runs `#b45309 → #92400e`). They're CSS variables in `src/styles/app.css`, and components use its class names.
 
-**Tests.** `backend/tests/` uses `SimpleTestCase` and DRF `APIClient` against `tests/fake_couch.FakeCouchDB`, an in-memory stand-in that supports get/save/delete with revision conflicts and a subset of Mango (`$eq/$ne/$in/$gt*/$lt*/$regex/$exists/$or/$and`, sort, skip, limit, fields). New Mango operators must be added there too. `tests/base.APITestCase` seeds an admin and provides `login/as_user/register/create_counsellor`. `tests/base.WorkflowTestCase` adds a small catalogue, intakes dated relative to today, a student assigned to counsellor A, and an unrelated counsellor B. The fake also supports `put_attachment/get_attachment`. Tests use the MD5 hasher for speed.
+**Tests.** `backend/tests/` uses `SimpleTestCase` and DRF `APIClient` against `tests/fake_couch.FakeCouchDB`, an in-memory stand-in that supports get/save/delete with revision conflicts, `_bulk_docs` (`update`), the `aec_stats` views (via the Python twins, with key/keys/range/reduce/group semantics), `_all_docs` by keys, and Mango through `apps/core/mango.py` (`$eq/$ne/$in/$gt*/$lt*/$regex/$exists/$or/$and`, sort, skip, limit, fields). New Mango operators must be added to `mango.py`. `tests/test_repository.py` checks that view-routed answers equal Mango's. `tests/base.APITestCase` seeds an admin and provides `login/as_user/register/create_counsellor`. `tests/base.WorkflowTestCase` adds a small catalogue, intakes dated relative to today, a student assigned to counsellor A, and an unrelated counsellor B. The fake also supports `put_attachment/get_attachment`. Tests use the MD5 hasher for speed.
 
 ## Live database state
 

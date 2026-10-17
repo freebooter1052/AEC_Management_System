@@ -1,78 +1,36 @@
 """
 In-memory stand-in for a couchdb.Database, so the API can be tested without a
 running CouchDB server. Implements the subset the app uses: get/save/delete
-with revision conflicts, Mango `find` (selectors, sort, skip, limit, fields),
-index() and info().
+with revision conflicts, `_bulk_docs`, Mango `find` (selectors, sort, skip, limit,
+fields - evaluated by apps.core.mango, the same code the repository uses), the
+`aec_stats` map/reduce views (via their Python twins in apps.core.couch_views),
+`_all_docs` (optionally by keys), index() and info().
 """
 
 import copy
 import io
-import re
 import uuid
 from types import SimpleNamespace
 
 from couchdb.http import ResourceConflict
 
-
-def _collate(value):
-    """Approximate CouchDB collation order: null < false < true < numbers < strings < arrays < objects."""
-    if value is None:
-        return (0,)
-    if value is False:
-        return (1,)
-    if value is True:
-        return (2,)
-    if isinstance(value, (int, float)):
-        return (3, value)
-    if isinstance(value, str):
-        return (4, value)
-    if isinstance(value, list):
-        return (5, [_collate(v) for v in value])
-    return (6, str(value))
+from apps.core import couch_views, mango
 
 
-def _lookup(doc, dotted):
-    for part in dotted.split("."):
-        if not isinstance(doc, dict) or part not in doc:
-            return None, False
-        doc = doc[part]
-    return doc, True
+_collate = mango.collate
+_lookup = mango.lookup
+matches = mango.matches
 
 
-def _cond(op, arg, value, present):
-    if op == "$exists":
-        return present == arg
-    if not present:
+_UNSET = object()  # `key=None` asks for the null key, so "no key given" needs its own marker
+
+
+def _in_range(key, startkey, endkey, inclusive_end=True):
+    k = _collate(key)
+    if startkey is not None and k < _collate(startkey):
         return False
-    if op == "$eq":
-        return value == arg
-    if op == "$ne":
-        return value != arg
-    if op == "$in":
-        return value in arg
-    if op == "$regex":
-        return isinstance(value, str) and re.search(arg, value) is not None
-    cmp = {"$gt": lambda a, b: a > b, "$gte": lambda a, b: a >= b,
-           "$lt": lambda a, b: a < b, "$lte": lambda a, b: a <= b}[op]
-    return cmp(_collate(value), _collate(arg))
-
-
-def matches(doc, selector):
-    for key, expected in selector.items():
-        if key == "$or":
-            if not any(matches(doc, s) for s in expected):
-                return False
-            continue
-        if key == "$and":
-            if not all(matches(doc, s) for s in expected):
-                return False
-            continue
-        value, present = _lookup(doc, key)
-        if isinstance(expected, dict) and expected and all(k.startswith("$") for k in expected):
-            if not all(_cond(op, arg, value, present) for op, arg in expected.items()):
-                return False
-        elif not present or value != expected:
-            return False
+    if endkey is not None and (k > _collate(endkey) or (not inclusive_end and k == _collate(endkey))):
+        return False
     return True
 
 
@@ -101,6 +59,17 @@ class FakeCouchDB:
         doc["_id"], doc["_rev"] = doc_id, rev
         return doc_id, rev
 
+    def update(self, documents):
+        """`_bulk_docs`: each document succeeds or fails on its own, like CouchDB."""
+        results = []
+        for doc in documents:
+            try:
+                doc_id, rev = self.save(doc)
+                results.append((True, doc_id, rev))
+            except ResourceConflict as exc:
+                results.append((False, doc.get("_id"), exc))
+        return results
+
     def delete(self, doc):
         current = self.docs.get(doc["_id"])
         if current is None or current["_rev"] != doc.get("_rev"):
@@ -127,21 +96,54 @@ class FakeCouchDB:
 
     def find(self, query):
         selector = query.get("selector", {})
-        docs = [d for d in self.docs.values() if matches(d, selector)]
-        for spec in reversed(query.get("sort", [])):
-            (field, direction), = spec.items()
-            docs = [d for d in docs if _lookup(d, field)[1]]  # CouchDB's index skips docs without the field
-            docs.sort(key=lambda d: _collate(_lookup(d, field)[0]), reverse=direction == "desc")
+        docs = mango.sort_docs([d for d in self.docs.values() if matches(d, selector)], query.get("sort", []))
         skip, limit = query.get("skip", 0), query.get("limit", 25)
         docs = docs[skip:skip + limit]
         if query.get("fields"):
             docs = [{f: d[f] for f in query["fields"] if f in d} for d in docs]
         return iter(copy.deepcopy(docs))
 
-    def view(self, name, include_docs=False):
-        """Only `_all_docs` is supported."""
-        assert name == "_all_docs", name
-        return [SimpleNamespace(id=k, doc=copy.deepcopy(v) if include_docs else None) for k, v in sorted(self.docs.items())]
+    def view(self, name, include_docs=False, keys=None, key=_UNSET, startkey=None, endkey=None, inclusive_end=True,
+             reduce=None, group=False, group_level=None, limit=None, skip=0, descending=False, **_):
+        """`_all_docs` and the `aec_stats` views, with CouchDB's key/range/reduce/group semantics."""
+        if name == "_all_docs":
+            ids = keys if keys is not None else sorted(self.docs)
+            return [SimpleNamespace(id=k, key=k, value=None, doc=copy.deepcopy(self.docs[k]) if include_docs else None)
+                    for k in ids if k in self.docs]
+        design, view_name = name.split("/")
+        assert design == couch_views.DESIGN_DOC, name
+        emit = couch_views.PY_MAPS[view_name]
+        rows = sorted(((k, v, doc_id) for doc_id, d in self.docs.items() for k, v in emit(d)),
+                      key=lambda r: (_collate(r[0]), r[2]))
+        if keys is not None:
+            rows = [r for k in keys for r in rows if _collate(r[0]) == _collate(k)]
+        elif key is not _UNSET:
+            rows = [r for r in rows if _collate(r[0]) == _collate(key)]
+        else:
+            rows = [r for r in rows if _in_range(r[0], startkey, endkey, inclusive_end)]
+        if descending:
+            rows.reverse()
+        reducer = couch_views.REDUCED.get(view_name) if reduce is not False else None
+        if reducer:
+            def combine(values):
+                if reducer == "_count":
+                    return len(values)
+                if values and isinstance(values[0], list):  # _sum of arrays is element-wise
+                    return [sum(col) for col in zip(*values)]
+                return sum(values)
+            if not group and group_level is None:
+                return [SimpleNamespace(id=None, key=None, value=combine([v for _, v, _ in rows]), doc=None)] if rows else []
+            groups = {}
+            for k, v, _ in rows:
+                gk = k if group or not isinstance(k, list) else k[:group_level]
+                groups.setdefault(repr(gk), [gk, []])[1].append(v)
+            return [SimpleNamespace(id=None, key=gk, value=combine(vs), doc=None)
+                    for gk, vs in sorted(groups.values(), key=lambda g: _collate(g[0]))]
+        rows = rows[skip:]
+        if limit is not None:
+            rows = rows[:limit]
+        return [SimpleNamespace(id=doc_id, key=k, value=v, doc=copy.deepcopy(self.docs[doc_id]) if include_docs else None)
+                for k, v, doc_id in rows]
 
     def index(self):
         return self.indexes
@@ -159,4 +161,4 @@ class UnavailableCouchDB(FakeCouchDB):
     def _down(self, *args, **kwargs):
         raise ConnectionRefusedError("CouchDB is not reachable")
 
-    get = save = delete = find = info = _down
+    get = save = update = delete = find = view = info = _down

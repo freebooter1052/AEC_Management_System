@@ -15,6 +15,7 @@ from apps.accounts import users
 from apps.core import repository
 from apps.core.db import set_db
 from apps.core.roles import ADMIN
+from apps.recommendations import services as recommendation_services
 
 from .fake_couch import FakeCouchDB
 
@@ -36,6 +37,7 @@ class APITestCase(SimpleTestCase):
     def setUp(self):
         self.db = FakeCouchDB()
         set_db(self.db)
+        recommendation_services._catalogue_cache.clear()  # per-process cache; every test has its own database
         self.client = APIClient()
         admin = users.build_user(email="admin@aec.test", password=PASSWORD, role=ADMIN, full_name="Admin")
         repository.save(admin)
@@ -79,7 +81,7 @@ class WorkflowTestCase(APITestCase):
                       "country": "Germany", "rank": 45})
         for cid, title in (("course_0001", "Robotics"), ("course_0002", "Data Science")):
             self.db.save({"_id": cid, "type": "course", "university_id": "university_001", "title": title,
-                          "cluster": "CS & AI"})
+                          "cluster": "CS & AI", "created_at": "2026-10-10T09:09:28Z"})
         self.db.save({"_id": "intake_open", "type": "intake", "name": "Fall Open", "season": "Fall", "year": 2099,
                       "application_deadline": day(60), "decision_by": day(120), "start_date": day(200)})
         self.db.save({"_id": "intake_closed", "type": "intake", "name": "Spring Closed", "season": "Spring",

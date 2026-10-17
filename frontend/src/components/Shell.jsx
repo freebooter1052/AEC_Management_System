@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { Link, useLocation } from "react-router-dom";
 import ChangePasswordDrawer from "./ChangePassword";
 import { lockScroll } from "./Dialog";
+import NotificationBell from "./NotificationBell";
 import { useAuth } from "./auth";
 import { initials } from "../lib/format";
 
@@ -14,17 +15,19 @@ const ICONS = {
   applications: <><rect x="5" y="3" width="14" height="18" rx="2" /><path d="M9 8h6M9 12h6M9 16h3" /></>,
   documents: <><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z" /><path d="M14 3v5h5" /><path d="M9.5 14.5l2 2 3.5-4" /></>,
   counselling: <><rect x="3" y="5" width="18" height="16" rx="2" /><path d="M3 10h18M8 3v4M16 3v4" /><path d="M8 14h3" /></>,
+  recommendations: <><path d="M12 3l2.6 5.3 5.9.9-4.3 4.1 1 5.8L12 16.4 6.8 19.1l1-5.8L3.5 9.2l5.9-.9z" /></>,
 };
 
 const NAV = {
-  student: [["dashboard", "Dashboard", "/dashboard/"], ["profile", "My profile", "/profile/"], ["universities", "Universities", "/universities/"],
-    ["applications", "Applications", "/applications/"], ["documents", "Documents", "/documents/"], ["counselling", "Counselling", "/counselling/"]],
-  counsellor: [["dashboard", "Dashboard", "/dashboard/"], ["students", "My students", "/students/"], ["applications", "Applications", "/applications/"],
+  student: [["dashboard", "Dashboard", "/dashboard/"], ["profile", "My profile", "/profile/"], ["recommendations", "Recommendations", "/recommendations/"],
+    ["universities", "Universities", "/universities/"], ["applications", "Applications", "/applications/"], ["documents", "Documents", "/documents/"], ["counselling", "Counselling", "/counselling/"]],
+  counsellor: [["dashboard", "Dashboard", "/dashboard/"], ["students", "My students", "/students/"], ["recommendations", "Recommendations", "/recommendations/"],
+    ["applications", "Applications", "/applications/"],
     ["documents", "Documents", "/documents/"], ["counselling", "Counselling", "/counselling/"], ["universities", "Universities", "/universities/"],
     ["counsellors", "My profile", "/counsellors/"]],
   admin: [["dashboard", "Dashboard", "/dashboard/"], ["students", "Students", "/students/"], ["counsellors", "Counsellors", "/counsellors/"],
     ["applications", "Applications", "/applications/"], ["documents", "Documents", "/documents/"], ["counselling", "Counselling", "/counselling/"],
-    ["universities", "Universities", "/universities/"]],
+    ["recommendations", "Recommendations", "/recommendations/"], ["universities", "Universities", "/universities/"]],
 };
 const PROFILE_LINK = { student: "/profile/", counsellor: "/counsellors/" };
 export const ROLE_LABEL = { student: "Student", counsellor: "Counsellor", admin: "Administrator" };
@@ -144,7 +147,10 @@ export default function AppShell({ title, crumb, children }) {
           <button ref={toggleRef} type="button" className="btn btn-outline btn-sm menu-toggle" aria-controls="sidebar" aria-expanded={menuOpen}
             onClick={() => setMenuOpen((o) => !o)}>{menuOpen ? "Close menu" : "Menu"}</button>
           <div className="muted small" id="crumb">{crumb}</div>
-          <AccountMenu user={user} onChangePassword={() => setChangingPassword(true)} onSignOut={signOut} />
+          <div className="topbar-actions">
+            <NotificationBell />
+            <AccountMenu user={user} onChangePassword={() => setChangingPassword(true)} onSignOut={signOut} />
+          </div>
         </header>
         <main className="content" id="main" tabIndex={-1}>{children}</main>
       </div>

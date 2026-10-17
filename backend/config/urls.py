@@ -27,6 +27,8 @@ api_patterns = [
     path("intakes/", include("apps.applications.intake_urls")),
     path("documents/", include("apps.documents.urls")),
     path("counselling/", include("apps.counselling.urls")),
+    path("recommendations/", include("apps.recommendations.urls")),
+    path("notifications/", include("apps.notifications.urls")),
 ]
 
 page_patterns = [
@@ -44,6 +46,8 @@ page_patterns = [
     path("applications/<str:application_id>/", frontend_app, name="application-page"),
     path("documents/", frontend_app, name="documents"),
     path("counselling/", frontend_app, name="counselling"),
+    path("recommendations/", frontend_app, name="recommendations-page"),
+    path("notifications/", frontend_app, name="notifications-page"),
 ]
 
 urlpatterns = [

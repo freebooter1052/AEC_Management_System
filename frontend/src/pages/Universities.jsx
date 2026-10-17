@@ -2,6 +2,7 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import AppShell from "../components/Shell";
+import CourseEditor from "../components/CourseEditor";
 import Drawer from "../components/Drawer";
 import { TabList, tabPanel } from "../components/Tabs";
 import { useAuth } from "../components/auth";
@@ -25,20 +26,51 @@ const LIST_STATE = {
 
 const planLink = (universityId, courseId) => `/applications/?new=1&university_id=${encodeURIComponent(universityId)}&course_id=${encodeURIComponent(courseId)}`;
 
-function CoursesDrawer({ u, onClose }) {
+/** Level, tuition and entry requirements an admin has recorded for a course (the imported catalogue has none). */
+export function CourseFacts({ c }) {
+  const facts = [
+    c.level, c.duration_months ? `${c.duration_months} months` : "",
+    c.tuition?.amount_per_year ? `${Number(c.tuition.amount_per_year).toLocaleString("en-GB")} ${c.tuition.currency}/year` : "",
+    c.eligibility?.min_grade_pct ? `Min. grade ${c.eligibility.min_grade_pct}%` : "",
+    ...Object.entries(c.eligibility?.min_english || {}).map(([t, v]) => `${t} ${v}+`),
+  ].filter(Boolean);
+  if (!facts.length && c.is_active !== false) return null;
+  return (
+    <span className="course-facts">
+      {c.is_active === false && <span className="badge badge-err">Not offered</span>}
+      {facts.map((f) => <span key={f} className="badge">{f}</span>)}
+    </span>
+  );
+}
+
+function CoursesDrawer({ u, isAdmin, onClose, onChanged }) {
+  const [editing, setEditing] = useState(undefined); // undefined = list, null = new course, object = that course
+  if (editing !== undefined) {
+    return (
+      <Drawer title={editing ? `Edit course: ${editing.title}` : `Add a course at ${u.name}`} onClose={onClose}>
+        <CourseEditor course={editing} universityId={u.id} onCancel={() => setEditing(undefined)}
+          onSaved={() => { setEditing(undefined); onChanged(); }} />
+      </Drawer>
+    );
+  }
   return (
     <Drawer title={u.name} onClose={onClose}>
       <p className="muted">{u.country} · {rankingText(u.rank)}</p>
+      {isAdmin && <p><button type="button" className="btn btn-outline btn-sm" onClick={() => setEditing(null)}>Add a course</button></p>}
       {u.courses.length ? (
         <>
-          <p className="small muted">{plural(u.courses.length, "course")} offered</p>
+          <p className="small muted">{plural(u.courses.length, "course")} {isAdmin ? "in the catalogue" : "offered"}</p>
           <ul className="course-list">
             {u.courses.map((c) => (
               <li key={c.id}>
                 <span>{c.title || c.name || "Untitled course"}
                   {(c.cluster || c.level) && <span className="small muted" style={{ display: "block" }}>{c.cluster || c.level}</span>}
+                  <CourseFacts c={c} />
                 </span>
-                <Link className="btn btn-outline btn-sm" onClick={onClose} to={planLink(u.id, c.id)} aria-label={`Plan an application for ${c.title || c.name}`}>Plan application</Link>
+                <span className="toolbar">
+                  {isAdmin && <button type="button" className="btn btn-outline btn-sm" onClick={() => setEditing(c)} aria-label={`Edit ${c.title || "course"}`}>Edit</button>}
+                  {c.is_active !== false && <Link className="btn btn-outline btn-sm" onClick={onClose} to={planLink(u.id, c.id)} aria-label={`Plan an application for ${c.title || c.name}`}>Plan application</Link>}
+                </span>
               </li>
             ))}
           </ul>
@@ -87,6 +119,7 @@ function CourseResults({ data, preferred, onOpen, countryName }) {
           <div>
             <div className="name">{c.title || c.canonical_name}</div>
             <div className="small muted">{[c.cluster, c.canonical_name && c.canonical_name !== c.title ? `also known as ${c.canonical_name}` : ""].filter(Boolean).join(" · ")}</div>
+            <CourseFacts c={c} />
             <div className="small">
               <button type="button" className="link-btn" onClick={() => onOpen(c.university.id)}>{c.university.name || "University"}</button>
               {" · "}{countryName(c.university.country)}{" · "}{rankingText(c.university.rank)}
@@ -173,7 +206,8 @@ export default function Universities() {
           <Pager data={data} noun={noun} onPage={(p) => { update({ page: p }); window.scrollTo({ top: 0, behavior: "smooth" }); }} />
         </div>
       </div>
-      {open && <CoursesDrawer u={open} onClose={() => setOpen(null)} />}
+      {open && <CoursesDrawer u={open} isAdmin={user.role === "admin"} onClose={() => setOpen(null)}
+        onChanged={() => { showCourses(open.id); reload(); }} />}
     </AppShell>
   );
 }

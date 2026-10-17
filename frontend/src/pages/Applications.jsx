@@ -65,7 +65,8 @@ function CreateDrawer({ isStudent, prefill, onClose }) {
   useEffect(() => {
     api("/intakes/").then((list) => {
       setIntakes(list);
-      const firstOpen = list.find((i) => i.is_open);
+      const suggested = list.find((i) => i.id === prefill.intake_id && i.is_open); // e.g. from a recommendation
+      const firstOpen = suggested || list.find((i) => i.is_open);
       if (firstOpen) pickIntake(firstOpen.id, list);
     }, (err) => toast(err.message, "error"));
     if (prefill.university_id) loadCourses(prefill.university_id, prefill.course_id);
@@ -156,7 +157,7 @@ export default function Applications() {
   const [search, setSearch] = useState(q);
   const typed = useDebounced(search.trim());
   const [creating, setCreating] = useState(params.get("new")
-    ? { university_id: params.get("university_id"), course_id: params.get("course_id"), student_id: params.get("student_id") }
+    ? { university_id: params.get("university_id"), course_id: params.get("course_id"), student_id: params.get("student_id"), intake_id: params.get("intake_id") }
     : null);
 
   useEffect(() => { if (typed !== q) update({ q: typed, page: 1 }); }, [typed]); // only when the debounced text changes
@@ -171,7 +172,7 @@ export default function Applications() {
     setCreating(null);
     // Drop the one-off "plan this course" parameters so a refresh does not reopen the drawer.
     const params = new URLSearchParams(window.location.search);
-    ["new", "university_id", "course_id"].forEach((k) => params.delete(k));
+    ["new", "university_id", "course_id", "intake_id"].forEach((k) => params.delete(k));
     const qs = params.toString();
     window.history.replaceState(window.history.state, "", window.location.pathname + (qs ? `?${qs}` : ""));
   }

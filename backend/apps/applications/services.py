@@ -21,7 +21,7 @@
 Every status change appends one history document and its id to `history_ids`.
 """
 
-from datetime import date
+from datetime import date, timedelta
 
 from couchdb.http import ResourceConflict
 from rest_framework.exceptions import PermissionDenied, ValidationError
@@ -30,6 +30,7 @@ from apps.core import audit, lookups, repository
 from apps.core.roles import ADMIN, STUDENT
 from apps.core.vocab import APPLICATION_STATUSES
 from apps.documents import services as document_services
+from apps.notifications import events
 from apps.students import services as student_services
 
 # Allowed next statuses. The main path runs top to bottom; the two backward steps let a counsellor
@@ -171,6 +172,8 @@ def create(*, student: dict, course_id: str, intake_id: str, deadline: date | No
     course = repository.get(course_id, "course")
     if course is None:
         raise ValidationError({"course_id": ["Course not found."]})
+    if course.get("is_active") is False:
+        raise ValidationError({"course_id": ["This course is no longer offered."]})
     university = repository.get(course.get("university_id"), "university")
     if university is None:
         raise ValidationError({"course_id": ["This course is not linked to a university in the catalogue."]})
@@ -271,6 +274,7 @@ def change_status(app: dict, new_status: str, *, remarks: str = "", actor, reque
                                            actor=actor, request=request)
     audit.record("application.status_changed", request=request, actor=actor, target_id=app["_id"],
                  details={"from": old, "to": new_status})
+    events.application_status_changed(app, student, old=old, new=new_status, history_id=hist["_id"], actor=actor)
     return app
 
 
@@ -346,7 +350,7 @@ def detail(app: dict, user) -> dict:
 def summary(apps: list[dict]) -> dict:
     """Pipeline counts plus the nearest open deadlines, for the workspace header and dashboards."""
     today = repository.today()
-    by_status = {s: 0 for s in APPLICATION_STATUSES}
+    by_status: dict[str, int] = {}
     upcoming = []
     for a in apps:
         by_status[a.get("status")] = by_status.get(a.get("status"), 0) + 1
@@ -354,12 +358,34 @@ def summary(apps: list[dict]) -> dict:
         if info["state"] in ("overdue", "due_soon", "open") and info["days_left"] is not None:
             upcoming.append((info["days_left"], a))
     upcoming.sort(key=lambda pair: pair[0])
-    open_count = sum(n for s, n in by_status.items() if s not in TERMINAL)
+    nearest = [a for _, a in upcoming[:5]]
+    if any("course_title" not in (a.get("snapshot") or {}) for a in nearest):
+        nearest = sorted(repository.get_many(a["_id"] for a in nearest), key=lambda a: a.get("deadline") or "")
+    return summary_from_counts(by_status, overdue=sum(1 for days, _ in upcoming if days < 0),
+                               due_soon=sum(1 for days, _ in upcoming if 0 <= days <= DUE_SOON_DAYS), nearest=nearest)
+
+
+def agency_summary() -> dict:
+    """`summary` over every application, from reduce views instead of loading them all."""
+    today = repository.today()
+    overdue = repository.view_count("open_deadlines", endkey=(today - timedelta(days=1)).isoformat())
+    due_soon = repository.view_count("open_deadlines", startkey=today.isoformat(),
+                                     endkey=(today + timedelta(days=DUE_SOON_DAYS)).isoformat())
+    nearest = [r.id for r in repository.view("open_deadlines", reduce=False, limit=5)]
+    docs = sorted(repository.get_many(nearest), key=lambda a: (a.get("deadline") or "", nearest.index(a["_id"])))
+    return summary_from_counts(repository.status_counts("application"), overdue=overdue, due_soon=due_soon, nearest=docs)
+
+
+def summary_from_counts(counts: dict, *, overdue: int, due_soon: int, nearest: list[dict]) -> dict:
+    """The pipeline summary from {status: count} plus deadline figures (also used with reduce views)."""
+    by_status = {s: 0 for s in APPLICATION_STATUSES}
+    for status, n in counts.items():
+        by_status[status] = by_status.get(status, 0) + n
     return {
-        "total": len(apps),
-        "open": open_count,
+        "total": sum(by_status.values()),
+        "open": sum(n for s, n in by_status.items() if s not in TERMINAL),
         "by_status": by_status,
-        "overdue": sum(1 for days, _ in upcoming if days < 0),
-        "due_soon": sum(1 for days, _ in upcoming if 0 <= days <= DUE_SOON_DAYS),
-        "upcoming_deadlines": serialize_page([a for _, a in upcoming[:5]]),
+        "overdue": overdue,
+        "due_soon": due_soon,
+        "upcoming_deadlines": serialize_page(nearest),
     }
