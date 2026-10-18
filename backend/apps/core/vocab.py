@@ -26,3 +26,11 @@ RECOMMENDATION_TIERS = ("Reach", "Target", "Safe")
 
 # SRS 4.10
 NOTIFICATION_CATEGORIES = ("status_change", "missing_document", "deadline", "follow_up", "assignment")
+
+# SRS 4.8 - outcome of the hard eligibility rules for one course (apps/recommendations/engine.py)
+RECOMMENDATION_ELIGIBILITY = ("eligible", "insufficient_data", "ineligible")
+RECOMMENDATION_ORIGINS = ("engine", "counsellor")
+
+# SRS 4.4 - course master data (same levels a student can target in their preferences)
+COURSE_LEVELS = ("Diploma", "Bachelors", "Masters", "MBA", "PhD", "Certificate")
+ENGLISH_TESTS = ("IELTS", "TOEFL", "PTE", "Duolingo", "Cambridge")

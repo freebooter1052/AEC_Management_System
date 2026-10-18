@@ -246,7 +246,7 @@ class Seeder:
             counsellor = user_c = None
             if spec["counsellor"] is not None:
                 counsellor, user_c = self.counsellors[spec["counsellor"]]
-                student_services.assign_counsellor(doc, counsellor["_id"], actor=None)
+                student_services.assign_counsellor(doc, counsellor["_id"], actor=None, notify=False)
                 doc["counsellor_assigned_at"] = self.at(joined - 1)
                 repository.save(doc)
             self.students.append({"spec": spec, "doc": doc, "user": user, "counsellor": counsellor,
@@ -568,7 +568,10 @@ def remove_seed() -> int:
     removed = 0
     for d in maintenance.all_docs():
         is_seed_audit = d.get("type") == "audit_log" and (d.get("target_id") in seed_ids or d.get("actor_id") in seed_ids)
-        if d["_id"] in seed_ids or is_seed_audit:
+        # Records the app created for seed people (refreshed recommendations, notifications, ...) go with them.
+        owned_by_seed = d.get("type") in maintenance.WORKFLOW_TYPES and any(
+            d.get(key) in seed_ids for key in ("student_id", "recipient_user_id", "application_id"))
+        if d["_id"] in seed_ids or is_seed_audit or owned_by_seed:
             repository.delete(d)
             removed += 1
     return removed

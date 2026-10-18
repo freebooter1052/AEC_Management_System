@@ -79,6 +79,8 @@ class ApplicationSummaryView(APIView):
     def get(self, request):
         selector = student_services.scope_to_students(request.user, {"type": "application"},
                                                       request.query_params.get("student_id"))
+        if "student_id" not in selector:  # an admin's agency-wide view: reduce views, not every application
+            return Response(services.agency_summary())
         return Response(services.summary(repository.find(selector)))
 
 

@@ -8,8 +8,10 @@ import Dashboard from "./pages/Dashboard";
 import Documents from "./pages/Documents";
 import ForgotPassword from "./pages/ForgotPassword";
 import Login from "./pages/Login";
+import Notifications from "./pages/Notifications";
 import { AccessDenied, NotFound } from "./pages/NotFound";
 import Profile from "./pages/Profile";
+import Recommendations from "./pages/Recommendations";
 import Register from "./pages/Register";
 import Students from "./pages/Students";
 import Universities from "./pages/Universities";
@@ -50,6 +52,8 @@ export default function App() {
       <Route path="/applications/:applicationId/" element={auth(<Application />)} />
       <Route path="/documents/" element={auth(<Documents />)} />
       <Route path="/counselling/" element={auth(<Counselling />)} />
+      <Route path="/recommendations/" element={auth(<Recommendations />)} />
+      <Route path="/notifications/" element={auth(<Notifications />)} />
       <Route path="*" element={<NotFound />} />
     </Routes>
   );

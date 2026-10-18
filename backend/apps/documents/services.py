@@ -29,6 +29,7 @@ from rest_framework.exceptions import ValidationError
 from apps.core import audit, lookups, repository
 from apps.core.roles import ADMIN, COUNSELLOR
 from apps.core.vocab import DOCUMENT_STATUSES
+from apps.notifications import events
 from apps.students import services as student_services
 
 # Every student needs these general documents; applications add SOP and LOR.
@@ -110,6 +111,7 @@ def ensure_checklist(student: dict, types, *, application: dict | None = None, a
         audit.record("document.checklist_created", request=request, actor=actor, target_id=student["_id"],
                      details={"application_id": application["_id"] if application else None,
                               "types": [d["document_type"] for d in created]})
+        events.documents_required(student, created, application=application, actor=actor)
     return created
 
 
@@ -240,6 +242,7 @@ def review(doc: dict, new_status: str, remarks: str, *, actor, request=None) -> 
     repository.save(doc)
     audit.record("document.reviewed", request=request, actor=actor, target_id=doc["_id"],
                  details={"from": current, "to": new_status})
+    events.document_reviewed(doc, new_status=new_status, remarks=doc["remarks"])
     return doc
 
 
@@ -281,9 +284,17 @@ def serialize(doc: dict, names: dict | None = None, apps: dict | None = None) ->
 
 
 def summary(docs: list[dict]) -> dict:
-    by_status = {s: 0 for s in DOCUMENT_STATUSES}
+    counts: dict[str, int] = {}
     for d in docs:
-        by_status[d.get("status")] = by_status.get(d.get("status"), 0) + 1
-    return {"total": len(docs), "by_status": by_status,
+        counts[d.get("status")] = counts.get(d.get("status"), 0) + 1
+    return summary_from_counts(counts)
+
+
+def summary_from_counts(counts: dict) -> dict:
+    """The same summary from {status: count} (e.g. a reduce view), without loading the documents."""
+    by_status = {s: 0 for s in DOCUMENT_STATUSES}
+    for status, n in counts.items():
+        by_status[status] = by_status.get(status, 0) + n
+    return {"total": sum(by_status.values()), "by_status": by_status,
             "needs_attention": sum(by_status.get(s, 0) for s in ATTENTION),
             "awaiting_review": sum(by_status.get(s, 0) for s in AWAITING_REVIEW)}

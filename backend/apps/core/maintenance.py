@@ -28,12 +28,12 @@ DEMO_EMAIL_SUFFIX = "@aec.demo"
 PEOPLE_TYPES = {"user", "student", "counsellor"}
 CATALOGUE_TYPES = {"university", "course"}
 WORKFLOW_TYPES = {"application", "document", "counselling_session", "application_history",
-                  "recommendation", "notification"}
+                  "recommendation", "recommendation_run", "notification"}
 # How a workflow document points at its owner: kept when that owner is kept. Ordered so an
 # application is decided before its history entries.
 WORKFLOW_OWNER = [
     ("application", "student_id"), ("document", "student_id"), ("counselling_session", "student_id"),
-    ("recommendation", "student_id"), ("application_history", "application_id"),
+    ("recommendation", "student_id"), ("recommendation_run", "student_id"), ("application_history", "application_id"),
     ("notification", "recipient_user_id"),
 ]
 # Mango indexes left behind by earlier seed scripts (`doc_type`-based or test leftovers).

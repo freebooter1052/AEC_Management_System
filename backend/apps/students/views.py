@@ -13,6 +13,7 @@ from . import services
 from .serializers import AssignCounsellorSerializer, StudentCreateSerializer, StudentProfileSerializer
 
 STUDENT_SORT = [{"type": "desc"}, {"created_at": "desc"}]
+BY_COUNSELLOR_SORT = [{"type": "desc"}, {"counsellor_id": "desc"}, {"created_at": "desc"}]
 
 
 def get_student_or_404(student_id: str) -> dict:
@@ -79,7 +80,9 @@ class StudentListCreateView(APIView):
                 {"personal.last_name": {"$regex": repository.contains_pattern(w)}},
                 {"personal.email": {"$regex": repository.contains_pattern(w)}},
             ]} for w in words]
-        return Response(repository.paginate(request, selector, sort=STUDENT_SORT, serialize_page=services.summary_page))
+        # With a counsellor filter, sort through [type, counsellor_id, created_at] so only that roster is read.
+        sort = BY_COUNSELLOR_SORT if "counsellor_id" in selector else STUDENT_SORT
+        return Response(repository.paginate(request, selector, sort=sort, serialize_page=services.summary_page))
 
     def post(self, request):
         s = StudentCreateSerializer(data=request.data)
@@ -153,7 +156,7 @@ class StudentDetailView(APIView):
             services.assign_counsellor(doc, None, actor=request.user, request=request)
             doc = get_student_or_404(student_id)
         user = repository.get(doc.get("user_id"), "user")
-        records = services.delete_workflow_records(student_id)
+        records = services.delete_workflow_records(student_id) + services.delete_notifications(doc.get("user_id"))
         repository.delete(doc)
         if user is not None:
             repository.delete(user)

@@ -17,6 +17,7 @@ from .serializers import (
 )
 
 MAX_CALENDAR_DAYS = 62
+session_sort = services.session_sort
 
 
 def get_session(request, session_id: str, *, manage: bool = False) -> dict:
@@ -68,7 +69,7 @@ class SessionListCreateView(APIView):
             selector["scheduled_at"] = {"$gt": None}
         direction = "asc" if when == "upcoming" else "desc"
         return Response(repository.paginate(
-            request, selector, sort=[{"type": direction}, {"scheduled_at": direction}],
+            request, selector, sort=session_sort(selector, direction),
             serialize_page=lambda docs: services.serialize_page(docs, request.user)))
 
     def post(self, request):
@@ -160,7 +161,7 @@ class CalendarView(APIView):
 
         selector = services.scope_selector(request.user, {"type": "counselling_session"}, **scope)
         selector["scheduled_at"] = {"$gte": f"{start.isoformat()}T00:00:00Z", "$lt": f"{end.isoformat()}T00:00:00Z"}
-        sessions = repository.find(selector, sort=[{"type": "asc"}, {"scheduled_at": "asc"}], limit=1000)
+        sessions = repository.find(selector, sort=session_sort(selector), limit=1000)
 
         follow_selector = services.scope_selector(request.user, {"type": "counselling_session"}, **scope)
         follow_selector["follow_up.due_date"] = {"$gte": start.isoformat(), "$lt": end.isoformat()}

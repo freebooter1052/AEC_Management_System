@@ -1,5 +1,5 @@
 """
-University & course search (SRS 4.4) - read-only skeleton for this sprint.
+University & course search (SRS 4.4); administrators also add, edit and deactivate courses.
 
 University documents come from the dataset already loaded into CouchDB
 (`manage.py load_universities` can (re)load it):
@@ -11,12 +11,18 @@ Course documents (`type: "course"`, linked by `university_id`) are searched by
 `CourseListView` and listed per university by `UniversityDetailView`.
 """
 
+from rest_framework import status
 from rest_framework.exceptions import NotFound
 from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from apps.accounts.permissions import IsAdmin
 from apps.core import countries, repository
+from apps.core.roles import ADMIN
+
+from . import services
+from .serializers import CourseCreateSerializer, CourseSerializer
 
 
 class UniversityListView(APIView):
@@ -56,16 +62,68 @@ class UniversityCountriesView(APIView):
         return Response([{"country": c, "count": counts[c]} for c in sorted(counts)])
 
 
+def get_university_or_404(university_id: str) -> dict:
+    doc = repository.get(university_id, "university")
+    if doc is None:
+        raise NotFound("University not found.")
+    return doc
+
+
 class UniversityDetailView(APIView):
-    """GET /api/universities/<id>/ - one university plus any course documents linked to it."""
+    """GET /api/universities/<id>/ - one university plus its courses (inactive ones for admins only)."""
 
     def get(self, request, university_id):
-        doc = repository.get(university_id, "university")
-        if doc is None:
-            raise NotFound("University not found.")
-        data = repository.public(doc)
-        data["courses"] = [repository.public(c) for c in repository.find({"type": "course", "university_id": university_id})]
+        data = repository.public(get_university_or_404(university_id))
+        selector = {"type": "course", "university_id": university_id}
+        if request.user.role != ADMIN:
+            selector.update(services.active_clause())
+        courses = sorted(repository.find(selector), key=lambda c: (c.get("title") or "").lower())
+        data["courses"] = [repository.public(c) for c in courses]
         return Response(data)
+
+
+class UniversityCourseCreateView(APIView):
+    """POST /api/universities/<id>/courses/ - admins add a course {title, cluster?, level?, tuition?, ...}."""
+
+    permission_classes = [IsAdmin]
+
+    def post(self, request, university_id):
+        university = get_university_or_404(university_id)
+        s = CourseCreateSerializer(data=request.data)
+        s.is_valid(raise_exception=True)
+        course = services.create_course(university, s.validated_data, actor=request.user, request=request)
+        return Response(repository.public(course), status=status.HTTP_201_CREATED)
+
+
+class CourseDetailView(APIView):
+    """
+    GET   /api/universities/courses/<id>/ - one course with its university (inactive: admins only).
+    PATCH /api/universities/courses/<id>/ - admins edit level, duration, tuition, entry requirements,
+          intakes, or deactivate it (`is_active: false`); send `rev` to detect edit conflicts (409).
+    """
+
+    def get_permissions(self):
+        return [IsAdmin()] if self.request.method == "PATCH" else super().get_permissions()
+
+    def _course(self, request, course_id):
+        course = repository.get(course_id, "course")
+        if course is None or (course.get("is_active") is False and request.user.role != ADMIN):
+            raise NotFound("Course not found.")
+        return course
+
+    def get(self, request, course_id):
+        return Response(_course_page([self._course(request, course_id)])[0])
+
+    def patch(self, request, course_id):
+        course = self._course(request, course_id)
+        s = CourseSerializer(data=request.data, partial=True)
+        s.is_valid(raise_exception=True)
+        changes = dict(s.validated_data)
+        if changes.get("rev"):
+            course["_rev"] = changes.pop("rev")
+        changes.pop("rev", None)
+        course = services.update_course(course, changes, actor=request.user, request=request)
+        return Response(_course_page([course])[0])
 
 
 def _course_page(docs: list[dict]) -> list[dict]:
@@ -90,12 +148,15 @@ class CourseListView(APIView):
         params = request.query_params
         selector = {"type": "course", "created_at": {"$gt": None}}
         words = params.get("q", "").split()[:5]
-        if words:
-            selector["$and"] = [{"$or": [
-                {"title": {"$regex": repository.contains_pattern(w)}},
-                {"canonical_name": {"$regex": repository.contains_pattern(w)}},
-                {"cluster": {"$regex": repository.contains_pattern(w)}},
-            ]} for w in words]
+        clauses = [{"$or": [
+            {"title": {"$regex": repository.contains_pattern(w)}},
+            {"canonical_name": {"$regex": repository.contains_pattern(w)}},
+            {"cluster": {"$regex": repository.contains_pattern(w)}},
+        ]} for w in words]
+        if request.user.role != ADMIN:
+            clauses.append(services.active_clause())
+        if clauses:
+            selector["$and"] = clauses
         if params.get("country"):
             ids = [u["_id"] for u in repository.find({"type": "university", "country": params["country"]}, fields=["_id"])]
             selector["university_id"] = {"$in": ids}

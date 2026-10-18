@@ -42,14 +42,13 @@ def build_counsellor(*, user_id: str, name: str, email: str, phone: str = "", sp
 
 
 def assigned_counts(counsellor_ids=None) -> dict[str, int]:
-    """Number of students per counsellor id, counted from `student.counsellor_id`."""
-    selector = {"type": "student", "counsellor_id": {"$gt": None}}
+    """Number of students per counsellor id, counted from `student.counsellor_id` (one reduce-view request)."""
     if counsellor_ids is not None:
-        selector["counsellor_id"] = {"$in": list(counsellor_ids)}
-    counts: dict[str, int] = {}
-    for s in repository.find(selector, fields=["counsellor_id"]):
-        counts[s["counsellor_id"]] = counts.get(s["counsellor_id"], 0) + 1
-    return counts
+        wanted = [c for c in dict.fromkeys(counsellor_ids) if c]
+        rows = repository.view("students_by_counsellor", keys=wanted, group=True) if wanted else []
+    else:
+        rows = repository.view("students_by_counsellor", group=True)
+    return {r.key: r.value for r in rows if r.key}
 
 
 def assigned_count(counsellor_id: str) -> int:

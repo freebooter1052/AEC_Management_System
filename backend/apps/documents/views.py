@@ -8,6 +8,7 @@ from rest_framework.views import APIView
 from apps.accounts.permissions import IsStaff
 from apps.core import audit, repository
 from apps.core.roles import STUDENT
+from apps.notifications import events
 from apps.students import services as student_services
 
 from . import services
@@ -72,6 +73,7 @@ class DocumentListCreateView(APIView):
         repository.save(doc)
         audit.record("document.created", request=request, actor=request.user, target_id=doc["_id"],
                      details={"student_id": student["_id"], "document_type": doc["document_type"]})
+        events.documents_required(student, [doc], application=application, actor=request.user)
         return Response(services.serialize(doc), status=status.HTTP_201_CREATED)
 
 
@@ -93,6 +95,8 @@ class DocumentSummaryView(APIView):
     def get(self, request):
         selector = student_services.scope_to_students(request.user, {"type": "document"},
                                                       request.query_params.get("student_id"))
+        if "student_id" not in selector:  # an admin's agency-wide view: the reduce view, not every document
+            return Response(services.summary_from_counts(repository.status_counts("document")))
         return Response(services.summary(repository.find(selector, fields=["status"])))
 
 

@@ -31,6 +31,7 @@ from rest_framework.exceptions import NotFound, PermissionDenied, ValidationErro
 from apps.core import audit, repository
 from apps.core.roles import ADMIN, COUNSELLOR, STUDENT
 from apps.counsellors import services as counsellor_services
+from apps.notifications import events
 
 # (section, dotted path, human label) - drives profile completion and the "missing" checklist.
 COMPLETION_FIELDS = [
@@ -259,7 +260,7 @@ def scope_to_students(user, selector: dict, student_id: str | None = None) -> di
     return selector
 
 
-WORKFLOW_TYPES = ("application", "document", "counselling_session", "recommendation")
+WORKFLOW_TYPES = ("application", "document", "counselling_session", "recommendation", "recommendation_run")
 
 
 def delete_workflow_records(student_id: str) -> int:
@@ -276,6 +277,19 @@ def delete_workflow_records(student_id: str) -> int:
     return removed
 
 
+def delete_notifications(user_id: str | None) -> int:
+    """Remove a deleted account's notifications, in bounded batches."""
+    removed = 0
+    while user_id:
+        batch = repository.find({"type": "notification", "recipient_user_id": user_id}, limit=500)
+        for doc in batch:
+            repository.delete(doc)
+        removed += len(batch)
+        if len(batch) < 500:
+            break
+    return removed
+
+
 def get_accessible(user, student_id: str) -> dict:
     """The student document, or 404 / 403."""
     doc = repository.get(student_id, "student") if student_id else None
@@ -289,8 +303,11 @@ def get_accessible(user, student_id: str) -> dict:
 # ---------------------------------------------------------------------------
 # Assignment
 # ---------------------------------------------------------------------------
-def assign_counsellor(student: dict, counsellor_id: str | None, *, actor, request=None) -> dict:
-    """Assign, reassign or (with None) unassign a counsellor, keeping both sides in step."""
+def assign_counsellor(student: dict, counsellor_id: str | None, *, actor, request=None, notify: bool = True) -> dict:
+    """
+    Assign, reassign or (with None) unassign a counsellor, keeping both sides in step. The student and the
+    new counsellor are notified (`notify=False` for the sample-data seeder, whose documents are all tagged).
+    """
     old_id = student.get("counsellor_id")
     if counsellor_id == old_id:
         return student
@@ -325,4 +342,6 @@ def assign_counsellor(student: dict, counsellor_id: str | None, *, actor, reques
         request=request, actor=actor, target_id=student["_id"],
         details={"from": old_id, "to": counsellor_id},
     )
+    if new_counsellor is not None and notify:
+        events.counsellor_assigned(student, new_counsellor)
     return student

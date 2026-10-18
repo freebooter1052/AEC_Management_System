@@ -23,6 +23,7 @@ from rest_framework.exceptions import PermissionDenied, ValidationError
 
 from apps.core import audit, lookups, repository
 from apps.core.roles import ADMIN, COUNSELLOR, STUDENT
+from apps.notifications import events
 from apps.students import services as student_services
 
 MAX_SESSION_MINUTES = 240
@@ -176,6 +177,8 @@ def complete(session: dict, data: dict, *, actor, request=None) -> dict:
     repository.save(session)
     audit.record("session.completed", request=request, actor=actor, target_id=session["_id"],
                  details={"follow_up": bool(follow)})
+    if follow:
+        events.follow_up_created(session)
     return session
 
 
@@ -209,6 +212,15 @@ def update_follow_up(session: dict, changes: dict, *, actor, request=None) -> di
     audit.record("session.follow_up_updated", request=request, actor=actor, target_id=session["_id"],
                  details={"status": follow.get("status")})
     return session
+
+
+def session_sort(selector: dict, direction: str = "asc") -> list[dict]:
+    """Sort by time through [type, counsellor_id|student_id, scheduled_at] when the list is one person's,
+    so CouchDB reads only that person's sessions instead of everyone's in date order."""
+    for field in ("counsellor_id", "student_id"):
+        if isinstance(selector.get(field), str):
+            return [{"type": direction}, {field: direction}, {"scheduled_at": direction}]
+    return [{"type": direction}, {"scheduled_at": direction}]
 
 
 # ---------------------------------------------------------------------------

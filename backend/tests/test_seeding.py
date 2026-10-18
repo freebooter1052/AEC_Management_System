@@ -92,3 +92,21 @@ class SeedDatasetTests(APITestCase):
         self.assertEqual(seeding.existing_seed_ids(), set())
         self.assertEqual([u["email"] for u in self.docs("user")], ["admin@aec.test"])
         self.assertEqual(len(self.docs("university")), 2 * len(seeding.COUNTRIES))
+
+    def test_seeding_writes_only_tagged_documents(self):
+        """The assignment hook must not leave untagged notifications behind (seed calls it with notify=False)."""
+        untagged = [d for d in self.db.docs.values()
+                    if d.get("type") not in ("university", "course", "audit_log") and d.get("source") != "seed"]
+        self.assertEqual([d["type"] for d in untagged], ["user"])  # only the test's own admin account
+
+    def test_removal_also_takes_records_the_app_created_for_seed_people(self):
+        student = next(s for s in self.docs("student") if s.get("counsellor_id") and s["preferences"].get("countries"))
+        token = self.login(student["personal"]["email"], seeding.DEFAULT_PASSWORD).data["token"]
+        self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {token}")
+        res = self.client.post("/api/recommendations/generate/", {}, format="json")
+        self.assertEqual(res.status_code, 200, res.data)
+        self.assertTrue(any(d.get("source") != "seed" for d in self.docs("recommendation_run")))
+        seeding.remove_seed()
+        self.assertEqual(self.docs("recommendation"), [])
+        self.assertEqual(self.docs("recommendation_run"), [])
+        self.assertEqual(self.docs("notification"), [])

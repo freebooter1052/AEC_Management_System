@@ -168,6 +168,7 @@ class CounsellorDetailView(APIView):
         repository.delete(doc)
         if user is not None:
             repository.delete(user)
+        student_services.delete_notifications(doc.get("user_id"))
         audit.record("counsellor.deleted", request=request, actor=request.user, target_id=counsellor_id,
                      details={"email": doc.get("email")})
         return Response(status=status.HTTP_204_NO_CONTENT)

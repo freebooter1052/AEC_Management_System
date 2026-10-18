@@ -43,7 +43,7 @@ Notes:
 | type | Key fields |
 |---|---|
 | `university` | `name`, `country`, `rank` (imported from `output/universities.json`) |
-| `course` | `university_id`, `title`, `canonical_name`, `cluster` (imported catalogue; tuition, level and eligibility are not in the source data yet) |
+| `course` | `university_id`, `title`, `canonical_name`, `cluster` (imported catalogue). Optional, recorded by an admin (Sprint 3): `level` (Diploma/Bachelors/Masters/MBA/PhD/Certificate), `duration_months`, `tuition{amount_per_year, currency}`, `eligibility{min_grade_pct, min_english{IELTS: 6.5, TOEFL: 90, …}, notes}`, `intake_ids[]` (empty = every intake), `is_active` (missing = true), `updated_at`. The imported catalogue has none of these, so the engine reports them as missing rather than guessing. |
 | `country` | `code` (ISO), `name`, `catalogue_name` (value used in `university.country`), `currency`, `region`, `university_count` |
 | `intake` | `name` (`"Fall 2027"`), `season`, `year`, `application_deadline`, `decision_by`, `start_date` |
 
@@ -105,22 +105,38 @@ Uploads accept PDF, PNG, JPEG, DOC and DOCX up to 5 MB; the content must match t
 A counsellor cannot hold two Scheduled sessions that overlap. Notes (summary, recommendations, actions, follow-up) are recorded when the session is completed, which is possible once it has started. A follow-up cannot be due before its session. A student's whole session history is visible to their current counsellor; only the session's own counsellor or an admin can change it. Students may mark their own follow-up done.
 
 ### `recommendation` (SRS 4.8)
+`_id` is `recommendation_<sha1(student_id|course_id)[:12]>`, so one student has at most one recommendation per course and a repeated or concurrent refresh updates it instead of duplicating it. Scoring rules: `apps/recommendations/engine.py`.
+
 | Field | Notes |
 |---|---|
-| `student_id`, `university_id`, `course_id`, `created_by` | `created_by` is a counsellor ID |
-| `method` | `rule_based_v1` |
-| `match_score` | 0–100 |
-| `tier` | Reach, Target or Safe |
-| `match_factors` | `{country_match, course_match, academic_fit, intake_available, budget_fit}` |
-| `reasons[]` | human-readable explanation (SRS: recommendations must be transparent) |
-| `status`, `remarks`, `snapshot` | `status` is Suggested, Accepted or Rejected |
+| `student_id`, `university_id`, `course_id`, `intake_id` | `intake_id` is the open intake the engine suggests applying for (`null` if none) |
+| `origin`, `method` | `engine` or `counsellor`; `rule_based_v2` (seed documents: `rule_based_v1`, no `origin`) |
+| `match_score`, `confidence`, `ranking_score` | 0–100. `match_score` over the factors that could be assessed; `confidence` = share of the weighting assessed; `ranking_score` = match × confidence, used for ordering |
+| `eligibility` | eligible, insufficient_data or ineligible (hard rules: level, grades, English, open intake) |
+| `match_factors` | `{country, course, academic, intake, budget}`, each `{status: match/partial/no_match/unknown, score 0–1 or null, weight, detail}` (seed v1: `{country_match, course_match, academic_fit, intake_available, budget_fit}`; the API reads both) |
+| `checks` | `{level, grades, english, intake}`, each `{status: pass/fail/unknown, detail}` |
+| `reasons[]`, `missing_data[]` | human-readable explanation; `[{source: profile/catalogue, item}]` for what could not be assessed |
+| `tier`, `tier_set_by` | Reach/Target/Safe from the engine, unless a counsellor set it (`tier_set_by`), which a refresh keeps |
+| `status`, `remarks`, `reviewed_by` | Suggested, Accepted or Rejected; the counsellor's note; who decided |
+| `in_latest_run`, `rank_position`, `generated_at`, `inputs_hash` | whether the latest refresh still recommends it, its position, when it was scored, and the input fingerprint |
+| `snapshot`, `created_by`, `created_at`, `updated_at` | names for display; counsellor ID (counsellors) or user ID |
+
+### `recommendation_run` (Sprint 3)
+One per student (`_id` = `recommendation_run_<sha1(student_id)[:12]>`), overwritten by every refresh: `student_id`, `method`, `weights`, `min_score`, `limit`, `status` (ok / insufficient_profile), `message`, `stats{catalogue_courses, evaluated, eligible, insufficient_data, ineligible, ineligible_by_rule{…}, below_threshold, recommended, inactive_or_unlinked}`, `recommended_ids[]`, `inputs_hash`, `generated_at`, `generated_by`. A run is **stale** when `inputs_hash` no longer matches the student's profile and the intake dates, or a course was edited at or after `generated_at`.
 
 ### `notification` (SRS 4.10)
+`_id` is `notification_<sha1(event_key|recipient_user_id)[:12]>`: the same event never notifies one person twice.
+
 | Field | Notes |
 |---|---|
-| `recipient_user_id`, `recipient_role` | |
+| `recipient_user_id`, `recipient_role` | only the recipient can read or mark it |
 | `category` | status_change, missing_document, deadline, follow_up, assignment |
-| `title`, `message`, `related_id`, `link`, `is_read`, `created_at` | |
+| `title`, `message`, `link` | `link` is an in-app path (`/applications/<id>/`) |
+| `related_id`, `related_type` | the application, document, session, student or counsellor it is about |
+| `event_key` | e.g. `app_status:<history id>`, `deadline:<application>:<deadline>:7d`, `follow_up:<session>:<due>:overdue` |
+| `is_read`, `read_at`, `created_at` | |
+
+Seed notifications have random IDs and no `event_key`, `related_type` or `read_at`; the API fills the blanks.
 
 ### `audit_log` (SRS 5.3)
 `action`, `actor_id`, `actor_role`, `target_id`, `details{}`, `ip`, `timestamp`.
@@ -145,6 +161,29 @@ A counsellor cannot hold two Scheduled sessions that overlap. Notes (summary, re
 | `type`+`recipient_user_id` | a user's notifications |
 | `type`+`deadline` | applications sorted by nearest deadline |
 | `type`+`scheduled_at` | counselling history and the calendar |
+| `type`+`recipient_user_id`+`created_at` | a user's notifications, newest first |
+| `type`+`recipient_user_id`+`is_read` | unread counts |
+| `type`+`follow_up.due_date` | follow-up reminders and the calendar |
+| `type`+`updated_at` | courses edited since a recommendation run |
+| `type`+`counsellor_id`+`created_at` | one counsellor's roster in date order |
+| `type`+`counsellor_id`+`scheduled_at`, `type`+`student_id`+`scheduled_at` | one person's sessions in date order |
+
+### Map/reduce views (`_design/aec_stats`)
+Mango cannot use an index for `$in` and loads every candidate document, so counts and multi-key lookups use views (measurements in `docs/DATABASE_AND_SCALABILITY.md`). Definitions, with a Python twin of each map for the tests: `backend/apps/core/couch_views.py`. `manage.py check_indexes` compares every view count with Mango on a live database.
+
+| View | Key → value | Used for |
+|---|---|---|
+| `by_student` | `[type, student_id]` → status (reduce `_count`) | a caseload's records by key (`student_id: {$in}` in `repository.find`) |
+| `by_type_status` | `[type, status]` → student_id (`_count`) | status distributions; list counts with a status filter |
+| `by_type` | `[type, has created_at]` (`_count`) | totals; list counts |
+| `students_by_counsellor` | counsellor_id or null (`_count`) | workload, unassigned count, rosters |
+| `open_deadlines` | deadline → student_id, pre-submission applications (`_count`) | overdue / due-soon counts, nearest deadlines |
+| `application_dims` | `[country/university/intake, value]` → `[1, is offer]` (`_sum`) | agency reports (applications and offers per value) |
+| `student_workload` | student_id → `[open application, document awaiting review]` (`_sum`) | the busiest counsellors' activity |
+| `counsellors` | counsellor id → `[name, active, max_students]` | workload ranking without loading counsellor documents |
+| `applications_by_dim` | `[country/intake, value]` → compact row | reports filtered by country or intake |
+| `follow_ups_by_due` | `[follow-up status, due date]` → counsellor_id (`_count`) | pending / overdue follow-ups |
+| `sessions_by_counsellor` | counsellor_id → `[status, scheduled_at, follow-up status, due]` | counsellor activity |
 
 ## Sample dataset
 
