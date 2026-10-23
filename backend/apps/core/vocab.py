@@ -24,8 +24,15 @@ FOLLOW_UP_STATUSES = ("Pending", "Done")
 RECOMMENDATION_STATUSES = ("Suggested", "Accepted", "Rejected")
 RECOMMENDATION_TIERS = ("Reach", "Target", "Safe")
 
-# SRS 4.10
-NOTIFICATION_CATEGORIES = ("status_change", "missing_document", "deadline", "follow_up", "assignment")
+# SRS 4.10 ("writing": SOP drafts shared, comments, AI-consent requests, referee letters)
+NOTIFICATION_CATEGORIES = ("status_change", "missing_document", "deadline", "follow_up", "assignment", "writing")
+
+# SOP / LOR writing (apps/writing): a statement is an SOP draft, a referee brief or a referee's starting draft
+STATEMENT_KINDS = ("sop", "lor_brief", "lor_draft")
+STATEMENT_STATUSES = ("Draft", "Shared", "Final")
+# A referee's stored status; "Received" and "Verified" are read from the linked LOR document
+REFERENCE_STATUSES = ("Planned", "Requested", "Cancelled")
+REFERENCE_STAGES = ("Planned", "Requested", "Received", "Verified", "Cancelled")
 
 # SRS 4.8 - outcome of the hard eligibility rules for one course (apps/recommendations/engine.py)
 RECOMMENDATION_ELIGIBILITY = ("eligible", "insufficient_data", "ineligible")

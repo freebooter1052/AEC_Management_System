@@ -260,7 +260,8 @@ def scope_to_students(user, selector: dict, student_id: str | None = None) -> di
     return selector
 
 
-WORKFLOW_TYPES = ("application", "document", "counselling_session", "recommendation", "recommendation_run")
+WORKFLOW_TYPES = ("application", "document", "counselling_session", "recommendation", "recommendation_run",
+                  "statement", "reference")
 
 
 def delete_workflow_records(student_id: str) -> int:

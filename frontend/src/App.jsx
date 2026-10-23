@@ -13,8 +13,10 @@ import { AccessDenied, NotFound } from "./pages/NotFound";
 import Profile from "./pages/Profile";
 import Recommendations from "./pages/Recommendations";
 import Register from "./pages/Register";
+import Statement from "./pages/Statement";
 import Students from "./pages/Students";
 import Universities from "./pages/Universities";
+import Writing from "./pages/Writing";
 
 const STAFF = ["counsellor", "admin"];
 
@@ -54,6 +56,8 @@ export default function App() {
       <Route path="/counselling/" element={auth(<Counselling />)} />
       <Route path="/recommendations/" element={auth(<Recommendations />)} />
       <Route path="/notifications/" element={auth(<Notifications />)} />
+      <Route path="/writing/" element={auth(<Writing />)} />
+      <Route path="/writing/statements/:statementId/" element={auth(<Statement />)} />
       <Route path="*" element={<NotFound />} />
     </Routes>
   );

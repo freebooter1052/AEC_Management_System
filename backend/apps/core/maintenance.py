@@ -28,12 +28,14 @@ DEMO_EMAIL_SUFFIX = "@aec.demo"
 PEOPLE_TYPES = {"user", "student", "counsellor"}
 CATALOGUE_TYPES = {"university", "course"}
 WORKFLOW_TYPES = {"application", "document", "counselling_session", "application_history",
-                  "recommendation", "recommendation_run", "notification"}
+                  "recommendation", "recommendation_run", "notification", "statement", "reference"}
+CONFIG_TYPES = {"setting"}  # admin settings (apps/writing): always kept
 # How a workflow document points at its owner: kept when that owner is kept. Ordered so an
 # application is decided before its history entries.
 WORKFLOW_OWNER = [
     ("application", "student_id"), ("document", "student_id"), ("counselling_session", "student_id"),
     ("recommendation", "student_id"), ("recommendation_run", "student_id"), ("application_history", "application_id"),
+    ("statement", "student_id"), ("reference", "student_id"),
     ("notification", "recipient_user_id"),
 ]
 # Mango indexes left behind by earlier seed scripts (`doc_type`-based or test leftovers).
@@ -97,7 +99,7 @@ def plan_purge(docs: list[dict]) -> PurgePlan:
             keep = d["_id"] in kept_users
         elif t in ("student", "counsellor"):
             keep = d["_id"] in kept_profiles and d.get("user_id") in kept_users
-        elif t in CATALOGUE_TYPES:
+        elif t in CATALOGUE_TYPES or t in CONFIG_TYPES:
             keep = True
         elif t in WORKFLOW_TYPES:
             pending_workflow.setdefault(t, []).append(d)

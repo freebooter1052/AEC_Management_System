@@ -56,6 +56,7 @@ INSTALLED_APPS = [
     "apps.counselling",
     "apps.recommendations",
     "apps.notifications",
+    "apps.writing",
 ]
 
 MIDDLEWARE = [
@@ -137,6 +138,12 @@ MAX_PAGE_SIZE = 100
 
 # Recommendation engine factor weights (apps/recommendations/engine.py); any subset overrides the defaults.
 RECOMMENDATION_WEIGHTS = {"country": 30, "course": 30, "academic": 20, "intake": 10, "budget": 10}
+
+# SOP / LOR writing assistant (apps/writing/gemini.py). Google Gemini is the only generative AI used;
+# without a key the writing tools still work, but AI drafting is switched off.
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
+GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-3.8-flash")
+GEMINI_TIMEOUT = int(os.getenv("GEMINI_TIMEOUT", "60"))
 
 # Not needed for the React app: Django serves its build, and the Vite dev server
 # proxies /api, so both run on one origin. Only list origins hosted elsewhere.

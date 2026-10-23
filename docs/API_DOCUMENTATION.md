@@ -87,7 +87,7 @@ Every user has an inbox of their own notifications. Nobody can list, read or mar
 
 | Method & path | Purpose |
 |---|---|
-| `GET /api/notifications/?unread=1&category=&page=&page_size=` | The caller's notifications, newest first. `category` is one of status_change, missing_document, deadline, follow_up, assignment (400 otherwise). Adds `unread` (total unread) to the page |
+| `GET /api/notifications/?unread=1&category=&page=&page_size=` | The caller's notifications, newest first. `category` is one of status_change, missing_document, deadline, follow_up, assignment, writing (400 otherwise). Adds `unread` (total unread) to the page |
 | `GET /api/notifications/unread-count/` | `{"unread": 3, "by_category": {"status_change": 1, "missing_document": 2, "deadline": 0, "follow_up": 0, "assignment": 0}}` |
 | `GET /api/notifications/<id>/` | One notification (403 if it is someone else's, 404 if missing) |
 | `POST /api/notifications/<id>/read/` | Body `{"read": true}` (default) or `{"read": false}`. Idempotent. Returns the notification |
@@ -102,6 +102,30 @@ A notification:
  "event_key": "app_status:application_history_…", "is_read": false, "read_at": null, "created_at": "2026-10-16T16:21:04Z"}
 ```
 Listing and the unread count also run the caller's own reminder sweep, at most once every 15 minutes per user (see the implementation report). Marking read retries up to 3 times on a revision conflict (re-read, then re-apply), then returns 409. `read-all` uses `_bulk_docs` in batches of 200 and retries conflicting documents one by one.
+
+## SOP & LOR writing
+
+Counsellors write statements of purpose with a guided interview and Google Gemini, and track each referee's recommendation letter. AI actions need three things, checked in this order: the caller is the student's own counsellor (403), the student has agreed to AI-assisted writing (403), and `GEMINI_API_KEY` is set (503). Admins can read everything but change only the setting. Students see their shared SOPs and their referees, and can comment.
+
+| Method & path | Who | Purpose |
+|---|---|---|
+| `GET /api/writing/?student_id=` | all (students: own) | Workspace: `student`, `consent`, `can_edit`, `ai_available`, `settings`, `questions[]`, `applications[]`, `statements[]` (rows), `references[]` |
+| `GET` / `PUT /api/writing/consent/` | student | `{"granted": true}`; returns `{granted, granted_at, withdrawn_at}` |
+| `POST /api/writing/consent/request/` | counsellor | `{student_id}`: notifies the student, at most once a day (`{"sent": false}` after that) |
+| `GET` / `PATCH /api/writing/settings/` | all / admin | `{"allow_lor_drafts": false, "ai_available": true}` |
+| `POST /api/writing/statements/` | counsellor | `{student_id, application_id?, title?, word_limit?}` → 201 |
+| `GET` / `PATCH` / `DELETE /api/writing/statements/<id>/` | see above | PATCH `{title?, word_limit?, answers?, content?, note?, rev}`; a changed `content` is saved as a new version. Final statements reject `content` (400) |
+| `POST /api/writing/statements/<id>/generate/` | counsellor | First draft from the answers (needs motivation, why_course, goals; 400 otherwise) |
+| `POST …/revise/` | counsellor | `{instruction}` (≤ 300 chars), e.g. "Make it more concise" |
+| `POST …/review/` | counsellor | Fills `feedback`; the text is not changed. Needs ≥ 50 words |
+| `POST …/status/` | counsellor | `{status: Draft/Shared/Final}`; sharing an SOP notifies the student |
+| `POST …/restore/` | counsellor | `{version}`: makes an earlier version current (as a new version) |
+| `POST …/comments/` | counsellor, student (once shared) | `{text}`: notifies the other side |
+| `POST /api/writing/references/` | counsellor | `{student_id, application_id?, referee{name, title?, institution?, email?, relationship?}, highlights?, due_date?}` → 201 |
+| `GET` / `PATCH /api/writing/references/<id>/` | see above | PATCH `{referee?, highlights?, due_date?, status? (Planned/Requested/Cancelled), rev}` |
+| `POST /api/writing/references/<id>/prepare/` | counsellor | `{kind: lor_brief}` (or `lor_draft` when the setting allows it, 403 otherwise): returns the statement holding it; repeating adds a version |
+
+Gemini errors never leak details: the service being down, a timeout or a bad key give **503** ("The writing assistant is not available right now…"), a quota limit gives 503 with a "busy" message, and a safety refusal gives **422**. Every AI call writes an `audit_log` (`writing.ai_draft`, `writing.ai_revise`, `writing.ai_review`, `writing.ai_lor_brief`, `writing.ai_lor_draft`) with the model and token counts, never the prompt or the reply.
 
 ## Dashboards (SRS 4.9)
 

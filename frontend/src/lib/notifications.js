@@ -7,6 +7,7 @@ export const CATEGORIES = [
   ["deadline", "Deadlines"],
   ["follow_up", "Follow-ups"],
   ["assignment", "Counsellor"],
+  ["writing", "SOP & LOR"],
 ];
 const LABEL = Object.fromEntries(CATEGORIES);
 export const categoryLabel = (c) => LABEL[c] || "Notice";

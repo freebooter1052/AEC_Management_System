@@ -192,6 +192,14 @@ function Detail({ app, user, setApp, reload }) {
               : <p className="muted" style={{ margin: 0 }}>No documents yet. SOP and LOR requirements are added when the application reaches Documents Pending.</p>}
           </div>
           <div className="card">
+            <div className="card-head"><h3>SOP &amp; recommendation letters</h3>
+              <Link className="small" to={isStaff ? `/writing/?student_id=${encodeURIComponent(app.student_id)}` : "/writing/"}>Open SOP &amp; LOR →</Link>
+            </div>
+            <p className="small muted" style={{ margin: 0 }}>{isStaff
+              ? "Draft the statement of purpose with the guided interview and AI assistant, and track each referee's letter."
+              : "See SOP drafts your counsellor shares with you and follow each recommendation letter."}</p>
+          </div>
+          <div className="card">
             <h3>Status history</h3>
             <ul className="timeline">
               {app.history.slice().reverse().map((h, i) => (

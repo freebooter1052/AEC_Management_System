@@ -21,6 +21,8 @@ document ──▶ student, application (null for general documents), counsellor
 counselling_session ──▶ student, counsellor
 recommendation ──▶ student, university, course, created_by counsellor
 notification ──▶ recipient_user_id (user), related_id (any doc)
+statement ──▶ student, application (null = general SOP), reference (referee briefs/drafts)
+reference ──▶ student, application, document (the LOR the letter is uploaded to)
 course.university_id ──▶ university        country.catalogue_name = university.country
 ```
 
@@ -30,7 +32,7 @@ course.university_id ──▶ university        country.catalogue_name = univer
 |---|---|
 | `user` | `email` (lowercase, unique), `password_hash` (PBKDF2), `role` (`student`/`counsellor`/`admin`), `full_name`, `profile_id`, `is_active`, `token_version`, `last_login`, `privacy_acknowledged_at` (self-registered students only: when they confirmed the registration privacy notice), `created_at`, `updated_at` |
 | `password_reset` | `user_id`, `email`, `code_hash` (HMAC-SHA256 of the 6-digit code, never the code itself), `attempts`, `created_at`, `expires_at`. One per user; deleted after a successful reset. Not seed or demo data |
-| `student` | `user_id`, `personal{first_name, last_name, preferred_name, email, phone{dial_code, number}, date_of_birth, gender, citizenship, address{line1, city, state, country, postal_code}}`, `academic{degree, institution, cgpa, gpa_scale, graduation_year, work_experience_years, gre_status, english_test{test_type, overall, listening, reading, writing, speaking}}`, `preferences{countries[], course_areas[], degree_level, intake, budget{min, max, currency}, requires_scholarship}`, `counsellor_id`, `counsellor_assigned_at`, `application_ids[]`, `profile_completion{overall, personal, academic, preferences, missing[]}`, `onboarding_status` |
+| `student` | `user_id`, `personal{first_name, last_name, preferred_name, email, phone{dial_code, number}, date_of_birth, gender, citizenship, address{line1, city, state, country, postal_code}}`, `academic{degree, institution, cgpa, gpa_scale, graduation_year, work_experience_years, gre_status, english_test{test_type, overall, listening, reading, writing, speaking}}`, `preferences{countries[], course_areas[], degree_level, intake, budget{min, max, currency}, requires_scholarship}`, `counsellor_id`, `counsellor_assigned_at`, `application_ids[]`, `profile_completion{overall, personal, academic, preferences, missing[]}`, `onboarding_status`, `ai_consent{granted, granted_at, withdrawn_at}` (absent until the student first decides; set only through `PUT /api/writing/consent/`) |
 | `counsellor` | `user_id`, `name`, `email`, `phone`, `specialization`, `region`, `max_students`, `is_active`, `assigned_student_ids[]` |
 
 Notes:
@@ -130,13 +132,33 @@ One per student (`_id` = `recommendation_run_<sha1(student_id)[:12]>`), overwrit
 | Field | Notes |
 |---|---|
 | `recipient_user_id`, `recipient_role` | only the recipient can read or mark it |
-| `category` | status_change, missing_document, deadline, follow_up, assignment |
+| `category` | status_change, missing_document, deadline, follow_up, assignment, writing |
 | `title`, `message`, `link` | `link` is an in-app path (`/applications/<id>/`) |
 | `related_id`, `related_type` | the application, document, session, student or counsellor it is about |
 | `event_key` | e.g. `app_status:<history id>`, `deadline:<application>:<deadline>:7d`, `follow_up:<session>:<due>:overdue` |
 | `is_read`, `read_at`, `created_at` | |
 
 Seed notifications have random IDs and no `event_key`, `related_type` or `read_at`; the API fills the blanks.
+
+### `statement` (SOP & LOR writing)
+An SOP draft (`kind: "sop"`), a brief for a referee (`lor_brief`) or a starting draft for a referee to rewrite (`lor_draft`, only when the admin setting allows it).
+
+| Field | Notes |
+|---|---|
+| `student_id`, `application_id`, `counsellor_id`, `reference_id` | `application_id` null = a general SOP; `reference_id` set for briefs and drafts |
+| `kind`, `title`, `word_limit` | `word_limit` 150–2000 |
+| `status` | Draft → Shared → Final (and back to Draft). Students see only `sop` statements that are Shared or Final |
+| `answers{}` | the guided interview: motivation, background, experience, why_course, why_university, goals, challenges, extra (`apps/writing/prompts.SOP_QUESTIONS`) |
+| `content`, `ai_assisted` | current text; `ai_assisted` becomes true once any version came from Gemini |
+| `versions[]` | `{n, content, source (ai_draft/ai_revise/manual), note, word_count, at, by}`, newest last, at most 20 |
+| `feedback` | the last AI review: `{summary, strengths[], improvements[], missing[], at, version}` |
+| `comments[]` | `{id, text, by, by_role, at}` between the student and their counsellor |
+
+### `reference` (a referee writing an LOR)
+`student_id`, `application_id`, `counsellor_id`, `referee{name, title, institution, email, relationship}`, `highlights` (what the referee can speak to), `due_date`, `status` (Planned / Requested / Cancelled), `document_id`, `requested_at`. Creating one claims the application's untitled `Required` LOR document, or adds a new one titled "LOR - <name>". The displayed `stage` adds Received (document Uploaded / Under Review) and Verified (document Verified). Cancelling removes the LOR document if nothing was uploaded.
+
+### `setting` (admin settings)
+One document, `_id` `setting_writing`: `allow_lor_drafts` (default false), `updated_at`, `updated_by`. Kept by `purge_demo_data`.
 
 ### `audit_log` (SRS 5.3)
 `action`, `actor_id`, `actor_role`, `target_id`, `details{}`, `ip`, `timestamp`.

@@ -9,6 +9,9 @@ the change, after the change is saved, and notifies everyone involved except the
 | document rejected / expired             | missing_document  | student                            |
 | follow-up agreed in a session           | follow_up         | student                            |
 | counsellor assigned                     | assignment        | student and the new counsellor     |
+| SOP draft shared with the student       | writing           | student                            |
+| comment on a shared SOP                 | writing           | the other side (student/counsellor)|
+| counsellor asks for AI-writing consent  | writing           | student                            |
 
 Time-based reminders (deadlines, outstanding documents, due follow-ups) are in `reminders.py`.
 """
@@ -102,3 +105,33 @@ def counsellor_assigned(student: dict, counsellor: dict) -> None:
     notify(recipient_user_id=counsellor.get("user_id"), recipient_role=COUNSELLOR, category="assignment",
            title="New student assigned", message=f"{student_name(student)} has been assigned to you.",
            event_key=key, related_id=student["_id"], related_type="student", link=f"/students/{student['_id']}/")
+
+
+def statement_shared(statement: dict, student: dict) -> None:
+    versions = statement.get("versions") or []
+    notify(recipient_user_id=student.get("user_id"), recipient_role=STUDENT, category="writing",
+           title="Your counsellor shared an SOP draft",
+           message=f"{statement.get('title', 'SOP')} is ready for you to read. Add a comment with any changes.",
+           event_key=f"sop_shared:{statement['_id']}:{versions[-1]['n'] if versions else 0}",
+           related_id=statement["_id"], related_type="statement", link=f"/writing/statements/{statement['_id']}/")
+
+
+def statement_commented(statement: dict, student: dict, comment: dict) -> None:
+    link = f"/writing/statements/{statement['_id']}/"
+    common = dict(category="writing", event_key=f"sop_comment:{statement['_id']}:{comment['id']}",
+                  related_id=statement["_id"], related_type="statement", link=link)
+    if comment.get("by_role") == STUDENT:
+        notify(recipient_user_id=counsellor_user_id(student.get("counsellor_id")), recipient_role=COUNSELLOR,
+               title=f"{student_name(student)} commented on their SOP", message=comment["text"][:300], **common)
+    elif statement.get("status") in ("Shared", "Final"):
+        notify(recipient_user_id=student.get("user_id"), recipient_role=STUDENT,
+               title="New comment from your counsellor", message=comment["text"][:300], **common)
+
+
+def ai_consent_requested(student: dict, day: str) -> bool:
+    """Once a day at most; True when a new request was sent."""
+    return notify(recipient_user_id=student.get("user_id"), recipient_role=STUDENT, category="writing",
+                  title="Your counsellor would like to use the writing assistant",
+                  message="Allow AI-assisted drafting of your SOP and referee briefs? Open SOP & LOR to read what is shared and decide.",
+                  event_key=f"ai_consent_request:{student['_id']}:{day}",
+                  related_id=student["_id"], related_type="student", link="/writing/") is not None

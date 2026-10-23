@@ -46,7 +46,7 @@ CouchDB runs as the Windows service "Apache CouchDB" (3.5, `http://127.0.0.1:598
 
 ## Architecture
 
-**Layout.** `backend/config/` holds settings and the root URL map. `backend/apps/<domain>/` holds the domain apps (`core`, `accounts`, `students`, `counsellors`, `universities`, `dashboard`, from Sprint 2 `applications` (+ intakes), `documents`, `counselling`, and from Sprint 3 `recommendations`, `notifications`). `frontend/` holds the React app (Vite); it contains no Python. Imports are absolute from `backend/`: `from apps.students import services`.
+**Layout.** `backend/config/` holds settings and the root URL map. `backend/apps/<domain>/` holds the domain apps (`core`, `accounts`, `students`, `counsellors`, `universities`, `dashboard`, from Sprint 2 `applications` (+ intakes), `documents`, `counselling`, and from Sprint 3 `recommendations`, `notifications`, then `writing` (SOP & LOR)). `frontend/` holds the React app (Vite); it contains no Python. Imports are absolute from `backend/`: `from apps.students import services`.
 
 **Domain app pattern.** `services.py` owns the document shape, derived fields and business rules. `serializers.py` holds plain DRF `Serializer`s used only for input validation. `views.py` holds `APIView`s that call services and the repository. Put new logic in `services.py`, not in views.
 
@@ -75,6 +75,12 @@ CouchDB runs as the Windows service "Apache CouchDB" (3.5, `http://127.0.0.1:598
 **Recommendations (Sprint 3).** `recommendations/engine.py` is pure scoring (5 weighted factors, 4 hard rules, `ranking_score` = match × confidence so missing data never ranks higher). `services.py` persists under deterministic IDs (`repository.stable_id`), refreshes with `_bulk_docs` and per-document conflict retry, keeps counsellor decisions, and tracks freshness with an input fingerprint. Never invent tuition, levels or requirements: missing catalogue data is reported as `insufficient_data` / `missing_data`. Ineligible courses can't be recommended, added or accepted.
 
 **Notifications (Sprint 3).** Create them only through `notifications.services.notify(event_key=...)`: the ID derives from (event_key, recipient), so a repeat is a no-op, and `notify` never raises. Business events live in `notifications/events.py` and are called *after* the triggering write is saved. Time-based reminders live in `notifications/reminders.py` (`send_reminders`, plus a throttled on-access sweep of the caller's caseload). Event keys must include what makes an event distinct (the window, the deadline). Only the recipient may read or mark a notification. The seeder calls `assign_counsellor(..., notify=False)` so seeding never writes untagged docs.
+
+**SOP & LOR writing (`apps/writing`).** `statement` docs (SOP drafts, referee briefs, referee starting drafts) and `reference` docs (one per referee, linked to an LOR `document`).
+- Google Gemini is the only generative AI. `writing/gemini.py` calls the REST API with the stdlib (key in the `x-goog-api-key` header; `GEMINI_API_KEY`/`GEMINI_MODEL` in `.env`). Tests swap it with `gemini.set_client(fake)`; never call the real API from tests.
+- AI is for the student's own counsellor only, and only after the student consents (`student.ai_consent`, set only by the student via `PUT /api/writing/consent/`). `services.require_ai` checks both. Admins read everything and only toggle `setting_writing.allow_lor_drafts`.
+- Prompts live in `writing/prompts.py` and send only what a statement needs (first name, academics, test score, target course, interview answers), never contact details or IDs. The model must leave `[ADD: …]` gaps instead of inventing facts. The audit log records the model and tokens, never prompt or reply text.
+- Referees write their own letters: the assistant prepares a brief; a starting draft only when an admin allows it. A referee's Received/Verified stage is read from its LOR document, so letters still go through the normal upload/verify flow.
 
 **Workflow (Sprint 2).**
 - Access to applications, documents and sessions always goes through the owning student: use `students/services.scope_to_students` for list selectors and `get_accessible` / `can_access` for single records. Never trust a `counsellor_id` stored on a workflow doc for access.

@@ -29,6 +29,7 @@ api_patterns = [
     path("counselling/", include("apps.counselling.urls")),
     path("recommendations/", include("apps.recommendations.urls")),
     path("notifications/", include("apps.notifications.urls")),
+    path("writing/", include("apps.writing.urls")),
 ]
 
 page_patterns = [
@@ -48,6 +49,8 @@ page_patterns = [
     path("counselling/", frontend_app, name="counselling"),
     path("recommendations/", frontend_app, name="recommendations-page"),
     path("notifications/", frontend_app, name="notifications-page"),
+    path("writing/", frontend_app, name="writing-page"),
+    path("writing/statements/<str:statement_id>/", frontend_app, name="statement-page"),
 ]
 
 urlpatterns = [

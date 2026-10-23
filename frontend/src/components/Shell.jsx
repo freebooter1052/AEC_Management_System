@@ -16,17 +16,18 @@ const ICONS = {
   documents: <><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z" /><path d="M14 3v5h5" /><path d="M9.5 14.5l2 2 3.5-4" /></>,
   counselling: <><rect x="3" y="5" width="18" height="16" rx="2" /><path d="M3 10h18M8 3v4M16 3v4" /><path d="M8 14h3" /></>,
   recommendations: <><path d="M12 3l2.6 5.3 5.9.9-4.3 4.1 1 5.8L12 16.4 6.8 19.1l1-5.8L3.5 9.2l5.9-.9z" /></>,
+  writing: <><path d="M4 20h4L19 9l-4-4L4 16z" /><path d="M13.5 6.5l4 4" /><path d="M14 20h6" /></>,
 };
 
 const NAV = {
   student: [["dashboard", "Dashboard", "/dashboard/"], ["profile", "My profile", "/profile/"], ["recommendations", "Recommendations", "/recommendations/"],
-    ["universities", "Universities", "/universities/"], ["applications", "Applications", "/applications/"], ["documents", "Documents", "/documents/"], ["counselling", "Counselling", "/counselling/"]],
+    ["universities", "Universities", "/universities/"], ["applications", "Applications", "/applications/"], ["writing", "SOP & LOR", "/writing/"], ["documents", "Documents", "/documents/"], ["counselling", "Counselling", "/counselling/"]],
   counsellor: [["dashboard", "Dashboard", "/dashboard/"], ["students", "My students", "/students/"], ["recommendations", "Recommendations", "/recommendations/"],
-    ["applications", "Applications", "/applications/"],
+    ["applications", "Applications", "/applications/"], ["writing", "SOP & LOR", "/writing/"],
     ["documents", "Documents", "/documents/"], ["counselling", "Counselling", "/counselling/"], ["universities", "Universities", "/universities/"],
     ["counsellors", "My profile", "/counsellors/"]],
   admin: [["dashboard", "Dashboard", "/dashboard/"], ["students", "Students", "/students/"], ["counsellors", "Counsellors", "/counsellors/"],
-    ["applications", "Applications", "/applications/"], ["documents", "Documents", "/documents/"], ["counselling", "Counselling", "/counselling/"],
+    ["applications", "Applications", "/applications/"], ["writing", "SOP & LOR", "/writing/"], ["documents", "Documents", "/documents/"], ["counselling", "Counselling", "/counselling/"],
     ["recommendations", "Recommendations", "/recommendations/"], ["universities", "Universities", "/universities/"]],
 };
 const PROFILE_LINK = { student: "/profile/", counsellor: "/counsellors/" };
