@@ -360,12 +360,17 @@ function CounsellorDashboard({ d, filters, update }) {
         <Kpi label="Open slots" value={w.available}><ProgressBar pct={w.utilisation_pct} label={`${w.utilisation_pct}% used`} name="Capacity used" /></Kpi>
       </div>
       <div className="cards-3">
-        <ReviewQueueCard docs={d.review_queue} />
-        <FollowUpsCard f={d.follow_ups} showStudent />
-        <DeadlinesCard apps={d.applications} showStudent />
-        <PipelineCard apps={d.applications} />
-        <SessionsCard sessions={d.upcoming_sessions} showStudent />
-        <NotificationsCard n={d.notifications} />
+        <div className="stack">
+          <ReviewQueueCard docs={d.review_queue} />
+          <PipelineCard apps={d.applications} />
+        </div>
+        <div className="stack">
+          <FollowUpsCard f={d.follow_ups} showStudent />
+          <SessionsCard sessions={d.upcoming_sessions} showStudent />
+        </div>
+        <div className="stack">
+          <DeadlinesCard apps={d.applications} showStudent />
+        </div>
       </div>
       <div className="card">
         <div className="card-head"><h3>Students needing attention</h3><Link className="small" to="/students/">All students →</Link></div>

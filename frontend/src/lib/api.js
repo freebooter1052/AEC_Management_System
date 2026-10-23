@@ -109,7 +109,7 @@ async function send(path, { method = "GET", body, form, query, signal } = {}) {
   }
   if (res.status === 401 && session.token) {
     session.clear();
-    window.location.href = "/login/?next=" + encodeURIComponent(window.location.pathname + window.location.search) + "&expired=1";
+    window.location.replace("/login/?next=" + encodeURIComponent(window.location.pathname + window.location.search) + "&expired=1");
     throw new ApiError(401, await res.json().catch(() => null));
   }
   if (!res.ok) {

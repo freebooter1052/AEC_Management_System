@@ -9,6 +9,11 @@ import "@fontsource-variable/inter";
 import "@fontsource-variable/space-grotesk";
 import "./styles/app.css";
 
+// Back/forward may restore a signed-in page from the browser's page cache after logout; reload so it re-checks the session.
+window.addEventListener("pageshow", (e) => {
+  if (e.persisted && !localStorage.getItem("aec.token") && !/^\/(login|register|forgot-password)\//.test(location.pathname)) location.reload();
+});
+
 createRoot(document.getElementById("root")).render(
   <StrictMode>
     <BrowserRouter>

@@ -148,7 +148,9 @@ CORS_ALLOWED_ORIGINS = [o.strip() for o in os.getenv("CORS_ALLOWED_ORIGINS", "")
 STATIC_URL = "static/"
 # Vite builds into frontend/dist with base "/static/" and content-hashed asset names,
 # so a changed file always gets a new URL and browsers never run stale code.
-STATICFILES_DIRS = [d for d in [FRONTEND_DIR / "dist"] if d.is_dir()]
+# Only the assets and public files are exposed under /static/, never dist/index.html: the app's
+# pages live at their own URLs (/login/, /dashboard/, ...), so /static/index.html must not load it.
+STATICFILES_DIRS = [("assets", d) for d in [FRONTEND_DIR / "dist" / "assets"] if d.is_dir()] + [FRONTEND_DIR / "public"]
 STATIC_ROOT = BASE_DIR / "staticfiles"
 
 LANGUAGE_CODE = "en-us"

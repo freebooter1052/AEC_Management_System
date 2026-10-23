@@ -15,7 +15,8 @@ export function AuthProvider({ children }) {
     async signOut() {
       try { await api("/auth/logout/", { method: "POST" }); } catch (e) { /* token may already be invalid */ }
       session.clear();
-      window.location.href = "/login/";
+      // replace(), not href: the signed-in page must not stay in history for the Back button.
+      window.location.replace("/login/");
     },
   };
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
