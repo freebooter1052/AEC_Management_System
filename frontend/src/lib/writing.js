@@ -30,8 +30,8 @@ export const REVISE_PRESETS = [
 
 const STATUS_TEXT = {
   Draft: ["Draft", "badge", "Only you can see this draft."],
-  Shared: ["Shared with student", "badge badge-info", "The student can read this draft and leave comments."],
-  Final: ["Final", "badge badge-ok", "Ready for the student to upload as their SOP."],
+  Shared: ["Waiting for student approval", "badge badge-info", "The student can read this draft, comment, and approve it or ask for changes."],
+  Final: ["Approved & final", "badge badge-ok", "Approved by the student. Ready to upload as their SOP."],
 };
 export const statementStatus = (s) => {
   const [label, className, help] = STATUS_TEXT[s] || [s || "—", "badge", ""];

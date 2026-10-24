@@ -10,6 +10,7 @@ the change, after the change is saved, and notifies everyone involved except the
 | follow-up agreed in a session           | follow_up         | student                            |
 | counsellor assigned                     | assignment        | student and the new counsellor     |
 | SOP draft shared with the student       | writing           | student                            |
+| student approves / asks changes (SOP, LOR) | writing           | counsellor                         |
 | comment on a shared SOP                 | writing           | the other side (student/counsellor)|
 | counsellor asks for AI-writing consent  | writing           | student                            |
 
@@ -126,6 +127,15 @@ def statement_commented(statement: dict, student: dict, comment: dict) -> None:
     elif statement.get("status") in ("Shared", "Final"):
         notify(recipient_user_id=student.get("user_id"), recipient_role=STUDENT,
                title="New comment from your counsellor", message=comment["text"][:300], **common)
+
+
+def document_decided(doc: dict, student: dict, decision: str, note: str, label: str, link: str, related_type: str) -> None:
+    approved = decision == "Approved"
+    notify(recipient_user_id=counsellor_user_id(student.get("counsellor_id")), recipient_role=COUNSELLOR, category="writing",
+           title=f"{student_name(student)} {'approved' if approved else 'asked for changes to'} {label}",
+           message="Ready to be marked final." if approved else note[:300],
+           event_key=f"doc_decision:{doc['_id']}:{doc.get('student_approval', {}).get('at', '')}",
+           related_id=doc["_id"], related_type=related_type, link=link)
 
 
 def ai_consent_requested(student: dict, day: str) -> bool:

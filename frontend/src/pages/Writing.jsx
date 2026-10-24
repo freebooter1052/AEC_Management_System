@@ -2,6 +2,7 @@
 import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import AppShell from "../components/Shell";
+import ApprovalBox from "../components/Approval";
 import Drawer from "../components/Drawer";
 import { ConfirmDialog } from "../components/Dialog";
 import StudentPicker from "../components/StudentPicker";
@@ -58,6 +59,26 @@ function StudentConsent({ consent, onChange }) {
         {consent.granted && consent.granted_at && <span className="small muted">Allowed on {formatDate(consent.granted_at)}</span>}
       </div>
     </div>
+  );
+}
+
+/* What is waiting for the student's OK, with the optional AI setting tucked underneath. */
+function StudentReview({ data }) {
+  const waitingSops = data.statements.filter((s) => s.kind === "sop" && s.status === "Shared" && !s.approved).length;
+  const waitingLors = data.references.filter((r) => ["Received", "Verified"].includes(r.stage) && r.student_approval?.decision !== "Approved").length;
+  const waiting = waitingSops + waitingLors;
+  return (
+    <>
+      <div className={`alert ${waiting ? "alert-warn" : "alert-info"}`} role="status">
+        {waiting
+          ? <>Your counsellor has prepared {waiting === 1 ? "a document" : `${waiting} documents`} for you to review. Open {waiting === 1 ? "it" : "each one"} and approve it, or ask for changes.</>
+          : "When your counsellor finishes your SOP or a recommendation letter arrives, you will be asked to review it here and approve it."}
+      </div>
+      <details className="card" style={{ marginTop: ".75rem" }}>
+        <summary className="small muted">Counsellor AI assistance: {data.consent.granted ? "allowed" : "not allowed"}</summary>
+        <StudentConsent consent={data.consent} onChange={() => window.location.reload()} />
+      </details>
+    </>
   );
 }
 
@@ -165,6 +186,7 @@ function SopList({ data, isStudent, onNew }) {
             <div className="toolbar">
               {s.ai_assisted && <span className="badge badge-brand">AI-assisted</span>}
               <span className={st.className}>{st.label}</span>
+              {isStudent && s.status === "Shared" && !s.approved && <span className="badge badge-warn">Needs your review</span>}
               <span aria-hidden="true" className="writing-chevron">›</span>
             </div>
           </Link>
@@ -282,7 +304,13 @@ function RefereeCard({ data, r, onEdit, onChanged }) {
           {r.stage !== "Verified" && <button type="button" className="btn btn-danger btn-sm" onClick={() => setCancelling(true)}>Cancel</button>}
         </div>
       )}
-      {!data.can_edit && brief && <p className="small muted" style={{ margin: 0 }}>Your counsellor has prepared a brief for this referee.</p>}
+      {!data.can_edit && ["Received", "Verified"].includes(r.stage) && (
+        <ApprovalBox approval={r.student_approval} noun="letter" url={`/writing/references/${encodeURIComponent(r.id)}/decision/`} onDone={onChanged}
+          intro={<>Your counsellor has received this letter. Check it under <Link to="/documents/">Documents</Link>, then tell us if it is OK.</>} />
+      )}
+      {data.can_edit && r.student_approval && (
+        <p className="small" style={{ margin: ".6rem 0 0" }}>{r.student_approval.decision === "Approved" ? "The student approved this letter." : `The student asked for changes: “${r.student_approval.note}”`}</p>
+      )}
       {cancelling && (
         <ConfirmDialog title={`Cancel ${r.referee.name}?`} danger confirmLabel="Cancel referee" busyLabel="Cancelling…" cancelLabel="Keep" busy={busy}
           onConfirm={() => setStatus("Cancelled")} onCancel={() => setCancelling(false)}>
@@ -374,7 +402,7 @@ export default function Writing() {
         <ErrorAlert error={error} onRetry={error.status === 403 ? undefined : reload}>{error.status === 403 ? "You do not have access to this student." : error.message}</ErrorAlert>
       ) : !data ? <Loading text="Loading…" /> : (
         <>
-          {staff ? <StaffStatus data={data} /> : <StudentConsent consent={data.consent} onChange={reload} />}
+          {staff ? <StaffStatus data={data} /> : <StudentReview data={data} />}
           <div className="card-head" style={{ marginTop: "1rem" }}>
             <TabList id="writing" label="Writing" tabs={[["sop", `Statements of purpose (${data.statements.filter((s) => s.kind === "sop").length})`], ["lor", `Recommendation letters (${data.references.filter((r) => r.stage !== "Cancelled").length})`]]}
               selected={state.tab} onSelect={(tab) => update({ tab })} />

@@ -39,7 +39,7 @@ describe("writing", () => {
   });
 
   it("labels statuses and referee stages for people", () => {
-    assert.equal(statementStatus("Shared").label, "Shared with student");
+    assert.equal(statementStatus("Shared").label, "Waiting for student approval");
     assert.equal(refereeStage("Requested").label, "Waiting for letter");
     assert.equal(refereeStage("Unknown").label, "Unknown");
   });

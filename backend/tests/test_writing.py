@@ -187,6 +187,14 @@ class StatementTests(WritingTestCase):
         stu_notes = self.student.get("/api/notifications/", {"category": "writing"}).data["results"]
         self.assertEqual(stu_notes[0]["link"], f"/writing/statements/{st['id']}/")
 
+        # Final needs the student's approval of the shared version
+        self.assertEqual(self.act(st["id"], "status", {"status": "Final"}).status_code, 400)
+        self.assertEqual(self.act(st["id"], "decision", {"decision": "Approved"}).status_code, 403)  # counsellor can't approve
+        res = self.act(st["id"], "decision", {"decision": "Changes requested"}, client=self.student)
+        self.assertEqual(res.status_code, 400)  # a note is required
+        res = self.act(st["id"], "decision", {"decision": "Approved"}, client=self.student)
+        self.assertEqual(res.status_code, 200)
+        self.assertTrue(res.data["approved"])
         self.assertEqual(self.act(st["id"], "status", {"status": "Final"}).status_code, 200)
         locked = self.coun_a.patch(f"/api/writing/statements/{st['id']}/", {"content": "x"}, format="json")
         self.assertEqual(locked.status_code, 400)
@@ -239,6 +247,19 @@ class ReferenceTests(WritingTestCase):
         self.assertEqual(self.coun_a.get(f"/api/writing/references/{ref['id']}/").data["stage"], "Received")
         self.coun_a.post(f"/api/documents/{ref['document_id']}/verify/", {"status": "Verified"}, format="json")
         self.assertEqual(self.student.get("/api/writing/").data["references"][0]["stage"], "Verified")
+
+    def test_student_approves_the_received_letter(self):
+        ref = self.add()
+        url = f"/api/writing/references/{ref['id']}/decision/"
+        self.assertEqual(self.student.post(url, {"decision": "Approved"}, format="json").status_code, 400)  # not here yet
+        self.student.post(f"/api/documents/{ref['document_id']}/upload/",
+                          {"file": SimpleUploadedFile("lor.pdf", b"%PDF-1.4 lor", content_type="application/pdf")},
+                          format="multipart")
+        self.assertEqual(self.coun_a.post(url, {"decision": "Approved"}, format="json").status_code, 403)
+        res = self.student.post(url, {"decision": "Approved"}, format="json")
+        self.assertEqual(res.status_code, 200)
+        self.assertEqual(res.data["student_approval"]["decision"], "Approved")
+        self.assertEqual(self.coun_a.get(f"/api/writing/references/{ref['id']}/").data["student_approval"]["decision"], "Approved")
 
     def test_cancel_removes_an_empty_letter_slot(self):
         ref = self.add()

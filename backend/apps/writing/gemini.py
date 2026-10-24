@@ -14,6 +14,7 @@ returning a `Result`.
 
 import json
 import logging
+import time
 import urllib.error
 import urllib.request
 from dataclasses import dataclass, field
@@ -25,6 +26,7 @@ from rest_framework.exceptions import APIException
 logger = logging.getLogger("aec.writing")
 
 ENDPOINT = "https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
+RETRIES = 2  # extra attempts after a 500/503/504 from Google
 MAX_OUTPUT_TOKENS = 8192  # room for the model's own reasoning tokens as well as a 1,500-word statement
 
 
@@ -68,19 +70,31 @@ class GeminiClient:
         request = urllib.request.Request(
             ENDPOINT.format(model=self.model), data=json.dumps(body).encode("utf-8"), method="POST",
             headers={"Content-Type": "application/json", "x-goog-api-key": self.api_key})
-        try:
-            with urllib.request.urlopen(request, timeout=self.timeout) as res:  # noqa: S310 - fixed https URL
-                data = json.loads(res.read().decode("utf-8"))
-        except urllib.error.HTTPError as exc:
-            # The body can explain a bad key or quota; log its status only, never the request (student data).
-            logger.error("Gemini returned HTTP %s for model %s", exc.code, self.model)
-            if exc.code == 429:
-                raise AssistantUnavailable("The writing assistant is busy (usage limit reached). "
-                                           "Please wait a minute and try again.") from None
-            raise AssistantUnavailable() from None
-        except (urllib.error.URLError, TimeoutError, OSError, ValueError) as exc:
-            logger.error("Gemini request failed: %s", type(exc).__name__)
-            raise AssistantUnavailable() from None
+        data = None
+        for attempt in range(RETRIES + 1):
+            try:
+                with urllib.request.urlopen(request, timeout=self.timeout) as res:  # noqa: S310 - fixed https URL
+                    data = json.loads(res.read().decode("utf-8"))
+                break
+            except urllib.error.HTTPError as exc:
+                # The body can explain a bad key or quota; log its status only, never the request (student data).
+                logger.error("Gemini returned HTTP %s for model %s", exc.code, self.model)
+                if exc.code in (500, 503, 504) and attempt < RETRIES:  # Google is briefly overloaded: try again
+                    time.sleep(2 * (attempt + 1))
+                    continue
+                if exc.code == 429:
+                    raise AssistantUnavailable("The writing assistant is busy (usage limit reached). "
+                                               "Please wait a minute and try again.") from None
+                if exc.code in (500, 503, 504):
+                    raise AssistantUnavailable("Google's AI service is overloaded right now. "
+                                               "Please try again in a minute.") from None
+                raise AssistantUnavailable() from None
+            except (urllib.error.URLError, TimeoutError, OSError, ValueError) as exc:
+                logger.error("Gemini request failed: %s", type(exc).__name__)
+                if isinstance(exc, TimeoutError) or isinstance(getattr(exc, "reason", None), TimeoutError):
+                    raise AssistantUnavailable("The writing assistant took too long to answer. "
+                                               "Please try again in a minute.") from None
+                raise AssistantUnavailable() from None
         return parse_response(data, self.model)
 
 

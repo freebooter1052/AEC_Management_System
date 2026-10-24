@@ -2,6 +2,7 @@
 import { useEffect, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import AppShell, { ROLE_LABEL } from "../components/Shell";
+import ApprovalBox from "../components/Approval";
 import { ConfirmDialog } from "../components/Dialog";
 import { useAuth } from "../components/auth";
 import { useToast } from "../components/Toast";
@@ -244,12 +245,22 @@ function Editor({ initial, user }) {
           {st.ai_assisted && <span className="badge badge-brand" title="Parts of this text were written with the AI assistant">AI-assisted</span>}
           <span className={status.className}>{status.label}</span>
           {ws.can_edit && isSop && st.status === "Draft" && <button type="button" className="btn btn-primary" onClick={() => setStatus("Shared")} disabled={busyAll || !wordCount(text)}>Share with student</button>}
-          {ws.can_edit && st.status !== "Final" && (isSop ? st.status === "Shared" : true) && <button type="button" className="btn btn-outline" onClick={() => setConfirm({ kind: "final" })} disabled={busyAll || !wordCount(text)}>Mark as final</button>}
+          {ws.can_edit && st.status !== "Final" && (isSop ? st.status === "Shared" : true) && <button type="button" className="btn btn-outline" onClick={() => setConfirm({ kind: "final" })} disabled={busyAll || !wordCount(text) || (isSop && !st.approved)} title={isSop && !st.approved ? "The student has to approve this version first" : undefined}>Mark as final</button>}
           {ws.can_edit && st.status !== "Draft" && <button type="button" className="btn btn-outline" onClick={() => setStatus("Draft")} disabled={busyAll}>Back to draft</button>}
         </div>
       </div>
 
       {isSop && <div className="card" style={{ marginBottom: "1rem" }}><Steps step={step} /></div>}
+      {isSop && st.status === "Shared" && user.role === "student" && (
+        <ApprovalBox approval={st.student_approval} current={st.approved || st.student_approval?.decision === "Changes requested"} noun="SOP"
+          url={`${path}decision/`} onDone={apply}
+          intro="Read the draft below. If it is correct and sounds like you, approve it. If not, say what to change and your counsellor will update it." />
+      )}
+      {isSop && ws.can_edit && st.status === "Shared" && (
+        st.approved ? <div className="alert alert-success" role="status">The student approved this version on {formatDateTime(st.student_approval.at)}. You can mark it as final.</div>
+        : st.student_approval?.decision === "Changes requested" ? <div className="alert alert-warn" role="status">The student asked for changes: “{st.student_approval.note}”. Update the text and the student can approve again.</div>
+        : <div className="alert alert-info" role="status">Waiting for the student to approve this draft.</div>
+      )}
       {ws.can_edit && blocked && <div className="alert alert-info">{blocked}{!ws.consent.granted && ws.ai_available && <> <Link to={back}>Ask the student from the SOP &amp; LOR page.</Link></>}</div>}
       {st.ai_assisted && user.role === "student" && <div className="alert alert-info">Parts of this draft were written with an AI assistant. Make sure every sentence is true and sounds like you — some universities ask you to declare AI help.</div>}
 

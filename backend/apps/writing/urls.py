@@ -12,5 +12,6 @@ urlpatterns = [
     path("statements/<str:statement_id>/<str:action>/", views.StatementActionView.as_view(), name="statement-action"),
     path("references/", views.ReferenceCreateView.as_view(), name="reference-create"),
     path("references/<str:reference_id>/", views.ReferenceDetailView.as_view(), name="reference-detail"),
+    path("references/<str:reference_id>/decision/", views.ReferenceDecisionView.as_view(), name="reference-decision"),
     path("references/<str:reference_id>/prepare/", views.ReferencePrepareView.as_view(), name="reference-prepare"),
 ]

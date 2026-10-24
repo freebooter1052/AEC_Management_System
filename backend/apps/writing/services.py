@@ -233,6 +233,7 @@ def update_statement(doc: dict, student: dict, data: dict, *, actor, request=Non
                           **{k: v.strip() for k, v in data["answers"].items() if k in prompts.SOP_KEYS}}
     if "content" in data and data["content"] != doc.get("content", ""):
         add_version(doc, data["content"], "manual", actor, data.get("note", ""))
+        doc.pop("student_approval", None)  # the student approved a text that no longer exists
     doc["updated_at"] = repository.now_iso()
     return repository.save(doc)
 
@@ -248,8 +249,12 @@ def change_status(doc: dict, student: dict, new_status: str, *, actor, request=N
         raise ValidationError({"status": ["Referee briefs and drafts are not shared with the student."]})
     if new_status in ("Shared", "Final") and not (doc.get("content") or "").strip():
         raise ValidationError({"status": ["Write or generate the text first."]})
+    if new_status == "Final" and doc["kind"] == "sop" and not is_approved(doc):
+        raise ValidationError({"status": ["The student has not approved this version yet. Share it and wait for their approval."]})
     old = doc["status"]
     doc["status"] = new_status
+    if new_status == "Draft":
+        doc.pop("student_approval", None)
     doc["updated_at"] = repository.now_iso()
     repository.save(doc)
     audit.record("writing.statement_status", request=request, actor=actor, target_id=doc["_id"],
@@ -257,6 +262,60 @@ def change_status(doc: dict, student: dict, new_status: str, *, actor, request=N
     if new_status == "Shared" and doc["kind"] == "sop":
         events.statement_shared(doc, student)
     return doc
+
+
+def _latest_n(doc: dict) -> int:
+    versions = doc.get("versions") or []
+    return versions[-1]["n"] if versions else 0
+
+
+def is_approved(doc: dict) -> bool:
+    a = doc.get("student_approval") or {}
+    return a.get("decision") == "Approved" and a.get("version") == _latest_n(doc)
+
+
+def _require_own_student(actor, student: dict) -> None:
+    if actor.role != STUDENT or actor.profile_id != student["_id"]:
+        raise PermissionDenied("Only the student can approve their own documents.")
+
+
+def decide_statement(doc: dict, student: dict, decision: str, note: str, *, actor, request=None) -> dict:
+    """The student approves the shared SOP, or sends it back with what to change."""
+    _require_own_student(actor, student)
+    if doc["kind"] != "sop" or doc["status"] != "Shared":
+        raise ValidationError({"detail": ["Only an SOP your counsellor has shared can be approved."]})
+    note = (note or "").strip()
+    if decision == "Changes requested" and not note:
+        raise ValidationError({"note": ["Tell your counsellor what to change."]})
+    now = repository.now_iso()
+    doc["student_approval"] = {"decision": decision, "at": now, "version": _latest_n(doc), "note": note[:1000]}
+    doc["updated_at"] = now
+    repository.save(doc)
+    audit.record("writing.student_decision", request=request, actor=actor, target_id=doc["_id"],
+                 details={"decision": decision})
+    events.document_decided(doc, student, decision, note, doc.get("title", "SOP"),
+                            f"/writing/statements/{doc['_id']}/", "statement")
+    return doc
+
+
+def decide_reference(ref: dict, student: dict, decision: str, note: str, *, actor, request=None) -> dict:
+    """The student confirms the recommendation letter received for a referee is fine, or flags a problem."""
+    _require_own_student(actor, student)
+    document = repository.get(ref.get("document_id"), "document") if ref.get("document_id") else None
+    if stage(ref, document) not in ("Received", "Verified"):
+        raise ValidationError({"detail": ["The letter has not arrived yet."]})
+    note = (note or "").strip()
+    if decision == "Changes requested" and not note:
+        raise ValidationError({"note": ["Tell your counsellor what is wrong with the letter."]})
+    now = repository.now_iso()
+    ref["student_approval"] = {"decision": decision, "at": now, "note": note[:1000]}
+    ref["updated_at"] = now
+    repository.save(ref)
+    audit.record("writing.student_decision", request=request, actor=actor, target_id=ref["_id"],
+                 details={"decision": decision})
+    events.document_decided(ref, student, decision, note, f"LOR from {ref['referee'].get('name', 'referee')}",
+                            "/writing/?tab=lor", "reference")
+    return ref
 
 
 def restore_version(doc: dict, student: dict, n: int, *, actor, request=None) -> dict:
@@ -474,6 +533,7 @@ def serialize_statement(doc: dict, user, names: dict | None = None) -> dict:
     names = names if names is not None else lookups.names_by_id(
         [doc.get("student_id")] + [c.get("by") for c in doc.get("comments") or []])
     data["student_name"] = names.get(doc.get("student_id"), "")
+    data["approved"] = is_approved(doc)
     data["word_count"] = word_count(doc.get("content"))
     data["placeholders"] = placeholders(doc.get("content"))
     data["comments"] = [{**c, "by_name": names.get(c.get("by"), "")} for c in doc.get("comments") or []]
@@ -485,6 +545,7 @@ def serialize_statement(doc: dict, user, names: dict | None = None) -> dict:
 
 def statement_row(doc: dict) -> dict:
     return {"id": doc["_id"], "kind": doc["kind"], "title": doc.get("title", ""), "status": doc["status"],
+            "student_approval": doc.get("student_approval"), "approved": is_approved(doc),
             "application_id": doc.get("application_id"), "reference_id": doc.get("reference_id"),
             "word_count": word_count(doc.get("content")), "word_limit": doc.get("word_limit"),
             "placeholders": placeholders(doc.get("content")), "ai_assisted": doc.get("ai_assisted", False),
@@ -494,6 +555,7 @@ def statement_row(doc: dict) -> dict:
 def serialize_reference(ref: dict, doc: dict | None, statements: list[dict]) -> dict:
     data = repository.public(ref)
     data["stage"] = stage(ref, doc)
+    data["student_approval"] = ref.get("student_approval")
     data["document_status"] = (doc or {}).get("status")
     data["statements"] = [statement_row(s) for s in statements if s.get("reference_id") == ref["_id"]]
     return data

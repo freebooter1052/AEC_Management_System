@@ -49,6 +49,11 @@ class StatusSerializer(serializers.Serializer):
     status = serializers.ChoiceField(choices=STATEMENT_STATUSES)
 
 
+class DecisionSerializer(serializers.Serializer):
+    decision = serializers.ChoiceField(choices=["Approved", "Changes requested"])
+    note = serializers.CharField(required=False, allow_blank=True, max_length=1000)
+
+
 class RestoreSerializer(serializers.Serializer):
     version = serializers.IntegerField(min_value=1)
 

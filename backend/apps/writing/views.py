@@ -11,7 +11,7 @@ from apps.students import services as student_services
 
 from . import gemini, prompts, services
 from .serializers import (
-    CommentSerializer, ConsentSerializer, PrepareSerializer, ReferenceCreateSerializer, ReferenceUpdateSerializer,
+    CommentSerializer, ConsentSerializer, DecisionSerializer, PrepareSerializer, ReferenceCreateSerializer, ReferenceUpdateSerializer,
     RestoreSerializer, ReviseSerializer, SettingsSerializer, StatementCreateSerializer, StatementUpdateSerializer,
     StatusSerializer, StudentRefSerializer,
 )
@@ -196,6 +196,11 @@ class StatementActionView(APIView):
             s.is_valid(raise_exception=True)
             services.require_edit(actor, student)
             doc = services.restore_version(doc, student, s.validated_data["version"], actor=actor, request=request)
+        elif action == "decision":
+            s = DecisionSerializer(data=request.data)
+            s.is_valid(raise_exception=True)
+            doc = services.decide_statement(doc, student, s.validated_data["decision"], s.validated_data.get("note", ""),
+                                            actor=actor, request=request)
         elif action == "comments":
             s = CommentSerializer(data=request.data)
             s.is_valid(raise_exception=True)
@@ -237,6 +242,20 @@ class ReferenceDetailView(APIView):
         s = ReferenceUpdateSerializer(data=request.data, partial=True)
         s.is_valid(raise_exception=True)
         ref = services.update_reference(ref, student, s.validated_data, actor=request.user, request=request)
+        return _reference_response(ref, student, request.user)
+
+
+class ReferenceDecisionView(APIView):
+    """POST /api/writing/references/<id>/decision/ {decision: Approved|Changes requested, note?} - the student."""
+
+    permission_classes = [IsStudent]
+
+    def post(self, request, reference_id):
+        ref, student = _get(request, "reference", reference_id)
+        s = DecisionSerializer(data=request.data)
+        s.is_valid(raise_exception=True)
+        ref = services.decide_reference(ref, student, s.validated_data["decision"], s.validated_data.get("note", ""),
+                                        actor=request.user, request=request)
         return _reference_response(ref, student, request.user)
 
 

@@ -153,9 +153,10 @@ An SOP draft (`kind: "sop"`), a brief for a referee (`lor_brief`) or a starting 
 | `versions[]` | `{n, content, source (ai_draft/ai_revise/manual), note, word_count, at, by}`, newest last, at most 20 |
 | `feedback` | the last AI review: `{summary, strengths[], improvements[], missing[], at, version}` |
 | `comments[]` | `{id, text, by, by_role, at}` between the student and their counsellor |
+| `student_approval` | `{decision (Approved/Changes requested), at, version, note}`, set by the student on a Shared SOP via `POST …/statements/<id>/decision/`. Cleared when the text changes or the SOP goes back to Draft. Marking an SOP Final requires an approval of the latest version |
 
 ### `reference` (a referee writing an LOR)
-`student_id`, `application_id`, `counsellor_id`, `referee{name, title, institution, email, relationship}`, `highlights` (what the referee can speak to), `due_date`, `status` (Planned / Requested / Cancelled), `document_id`, `requested_at`. Creating one claims the application's untitled `Required` LOR document, or adds a new one titled "LOR - <name>". The displayed `stage` adds Received (document Uploaded / Under Review) and Verified (document Verified). Cancelling removes the LOR document if nothing was uploaded.
+`student_id`, `application_id`, `counsellor_id`, `referee{name, title, institution, email, relationship}`, `highlights` (what the referee can speak to), `due_date`, `status` (Planned / Requested / Cancelled), `document_id`, `requested_at`, `student_approval{decision, at, note}` (the student confirms the received letter via `POST …/references/<id>/decision/`). Creating one claims the application's untitled `Required` LOR document, or adds a new one titled "LOR - <name>". The displayed `stage` adds Received (document Uploaded / Under Review) and Verified (document Verified). Cancelling removes the LOR document if nothing was uploaded.
 
 ### `setting` (admin settings)
 One document, `_id` `setting_writing`: `allow_lor_drafts` (default false), `updated_at`, `updated_by`. Kept by `purge_demo_data`.
