@@ -96,10 +96,10 @@ function apiUrl(path, query) {
   return url;
 }
 
-async function send(path, { method = "GET", body, form, query, signal } = {}) {
+async function send(path, { method = "GET", body, form, query, signal, token = session.token } = {}) {
   const headers = { Accept: "application/json" };
   if (body !== undefined) headers["Content-Type"] = "application/json"; // FormData sets its own boundary
-  if (session.token) headers.Authorization = "Bearer " + session.token;
+  if (token) headers.Authorization = "Bearer " + token;
   let res;
   try {
     res = await fetch(apiUrl(path, query), { method, headers, signal, body: form ?? (body !== undefined ? JSON.stringify(body) : undefined) });

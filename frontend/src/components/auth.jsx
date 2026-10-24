@@ -13,9 +13,12 @@ export function AuthProvider({ children }) {
     refreshSession(token, u) { session.save(token, u); setUser(u); },
     updateUser(u) { session.save(session.token, u); setUser(u); },
     async signOut() {
-      try { await api("/auth/logout/", { method: "POST" }); } catch (e) { /* token may already be invalid */ }
+      // Drop the local session first so requests still in flight (notification polling, dashboards)
+      // that get a 401 once the token is revoked don't trigger the "session expired" redirect.
+      const token = session.token;
       session.clear();
-      window.location.href = "/login/";
+      try { await api("/auth/logout/", { method: "POST", token }); } catch (e) { /* token may already be invalid */ }
+      window.location.replace("/login/");
     },
   };
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
